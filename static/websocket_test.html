@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MMM WebSocket Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            background: #f5f5f5;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 10px 0;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background: #ddd;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background: #4caf50;
+            transition: width 0.3s ease;
+        }
+        .message {
+            background: white;
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 4px;
+            border-left: 4px solid #007bff;
+        }
+        .error {
+            border-left-color: #dc3545;
+            background: #f8d7da;
+        }
+        .success {
+            border-left-color: #28a745;
+            background: #d4edda;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        input {
+            padding: 8px;
+            margin: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <h1>MMM WebSocket Test Interface</h1>
+    
+    <div class="container">
+        <h3>Connection Controls</h3>
+        <input type="text" id="runId" placeholder="Training Run ID" value="test-run-123">
+        <button onclick="connectTraining()">Connect to Training</button>
+        <button onclick="disconnect()">Disconnect</button>
+        <p>Status: <span id="connectionStatus">Disconnected</span></p>
+    </div>
+    
+    <div class="container">
+        <h3>Training Progress</h3>
+        <div class="progress-bar">
+            <div class="progress-fill" id="progressBar" style="width: 0%"></div>
+        </div>
+        <p id="progressText">No progress data</p>
+        <p id="currentStep">Waiting for updates...</p>
+    </div>
+    
+    <div class="container">
+        <h3>Real-time Messages</h3>
+        <div id="messages" style="max-height: 400px; overflow-y: auto;"></div>
+        <button onclick="clearMessages()">Clear Messages</button>
+    </div>
+
+    <script>
+        let ws = null;
+        let reconnectAttempts = 0;
+        const maxReconnectAttempts = 5;
+
+        function updateConnectionStatus(status) {
+            document.getElementById('connectionStatus').textContent = status;
+        }
+
+        function addMessage(message, type = 'info') {
+            const messagesDiv = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${type}`;
+            
+            const timestamp = new Date().toLocaleTimeString();
+            messageDiv.innerHTML = `<strong>[${timestamp}]</strong> ${message}`;
+            
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function updateProgress(data) {
+            const progressBar = document.getElementById('progressBar');
+            const progressText = document.getElementById('progressText');
+            const currentStep = document.getElementById('currentStep');
+            
+            if (data.progress_pct !== undefined) {
+                progressBar.style.width = `${data.progress_pct}%`;
+                progressText.textContent = `${Math.round(data.progress_pct)}% complete`;
+            }
+            
+            if (data.current_step) {
+                currentStep.textContent = data.current_step;
+            }
+            
+            if (data.current_fold && data.total_folds) {
+                progressText.textContent += ` - Fold ${data.current_fold}/${data.total_folds}`;
+            }
+        }
+
+        function connectTraining() {
+            const runId = document.getElementById('runId').value;
+            if (!runId) {
+                addMessage('Please enter a run ID', 'error');
+                return;
+            }
+
+            if (ws) {
+                ws.close();
+            }
+
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws/training/${runId}`;
+            
+            addMessage(`Connecting to ${wsUrl}...`);
+            updateConnectionStatus('Connecting...');
+
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = function(event) {
+                addMessage('Connected to training WebSocket', 'success');
+                updateConnectionStatus('Connected');
+                reconnectAttempts = 0;
+                
+                // Send ping to test connection
+                ws.send('ping');
+            };
+
+            ws.onmessage = function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    addMessage(`Received: ${data.type}`, 'info');
+                    
+                    // Handle different message types
+                    switch(data.type) {
+                        case 'training_progress':
+                            updateProgress(data.data);
+                            addMessage(`Progress: ${data.data.current_step || 'Processing...'}`, 'info');
+                            break;
+                            
+                        case 'fold_complete':
+                            const foldData = data.data;
+                            addMessage(`Fold ${foldData.fold} completed with MAPE: ${foldData.mape?.toFixed(2)}%`, 'success');
+                            break;
+                            
+                        case 'training_complete':
+                            const results = data.data;
+                            addMessage(`Training completed! CV MAPE: ${results.cv_mape?.toFixed(2)}%`, 'success');
+                            updateProgress({progress_pct: 100, current_step: 'Training completed'});
+                            break;
+                            
+                        case 'training_error':
+                            addMessage(`Training error: ${data.data.error}`, 'error');
+                            break;
+                            
+                        default:
+                            addMessage(`Unknown message type: ${data.type}`, 'info');
+                    }
+                } catch (e) {
+                    if (event.data === 'pong') {
+                        addMessage('Ping/pong successful', 'success');
+                    } else {
+                        addMessage(`Error parsing message: ${e.message}`, 'error');
+                    }
+                }
+            };
+
+            ws.onclose = function(event) {
+                addMessage('WebSocket connection closed', 'error');
+                updateConnectionStatus('Disconnected');
+                
+                // Attempt to reconnect
+                if (reconnectAttempts < maxReconnectAttempts) {
+                    reconnectAttempts++;
+                    addMessage(`Attempting to reconnect (${reconnectAttempts}/${maxReconnectAttempts})...`, 'info');
+                    setTimeout(() => connectTraining(), 2000);
+                }
+            };
+
+            ws.onerror = function(error) {
+                addMessage(`WebSocket error: ${error}`, 'error');
+                updateConnectionStatus('Error');
+            };
+        }
+
+        function disconnect() {
+            if (ws) {
+                ws.close();
+                ws = null;
+                addMessage('Disconnected by user', 'info');
+                updateConnectionStatus('Disconnected');
+            }
+        }
+
+        function clearMessages() {
+            document.getElementById('messages').innerHTML = '';
+        }
+
+        // Send periodic pings to keep connection alive
+        setInterval(() => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send('ping');
+            }
+        }, 30000);
+    </script>
+</body>
+</html>

@@ -1,0 +1,73 @@
+version: '3.8'
+
+services:
+  # Redis cache service
+  redis:
+    image: redis:7-alpine
+    container_name: mmm-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    networks:
+      - mmm-network
+
+  # MMM Application
+  mmm-app:
+    build:
+      context: .
+      target: development
+      dockerfile: Dockerfile
+    container_name: mmm-app
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - MMM_ENV=development
+      - DATABASE_URL=sqlite:////app/data/mmm_app.db
+      - REDIS_URL=redis://redis:6379/0
+      - HOST=0.0.0.0
+      - PORT=8000
+      - LOG_LEVEL=INFO
+    volumes:
+      # Mount source code for development (hot reload)
+      - ./src:/app/src
+      - ./static:/app/static
+      - ./alembic:/app/alembic
+      - ./alembic.ini:/app/alembic.ini
+      # Persistent data volumes
+      - app_data:/app/data
+      - app_logs:/app/logs
+      - app_uploads:/app/static/uploads
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - mmm-network
+
+volumes:
+  redis_data:
+    driver: local
+  app_data:
+    driver: local
+  app_logs:
+    driver: local
+  app_uploads:
+    driver: local
+
+networks:
+  mmm-network:
+    driver: bridge

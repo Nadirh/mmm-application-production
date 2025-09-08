@@ -1,0 +1,113 @@
+version: '3.8'
+
+services:
+  # Redis cache service - production config
+  redis:
+    image: redis:7-alpine
+    container_name: mmm-redis-prod
+    restart: always
+    ports:
+      - "127.0.0.1:6379:6379"  # Bind to localhost only
+    volumes:
+      - redis_data_prod:/data
+      - ./redis.conf:/usr/local/etc/redis/redis.conf:ro
+    command: redis-server /usr/local/etc/redis/redis.conf
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks:
+      - mmm-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # MMM Application - production config
+  mmm-app:
+    build:
+      context: .
+      target: production
+      dockerfile: Dockerfile
+    container_name: mmm-app-prod
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      - MMM_ENV=production
+      - DATABASE_URL=sqlite:////app/data/mmm_app.db
+      - REDIS_URL=redis://redis:6379/0
+      - HOST=0.0.0.0
+      - PORT=8000
+      - LOG_LEVEL=INFO
+      - USE_JSON_LOGGING=true
+    volumes:
+      # Persistent data volumes only
+      - app_data_prod:/app/data
+      - app_logs_prod:/app/logs
+      - app_uploads_prod:/app/static/uploads
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - mmm-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '1.0'
+          memory: 2G
+
+  # Nginx reverse proxy (optional)
+  nginx:
+    image: nginx:alpine
+    container_name: mmm-nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - mmm-app
+    networks:
+      - mmm-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  redis_data_prod:
+    driver: local
+  app_data_prod:
+    driver: local
+  app_logs_prod:
+    driver: local
+  app_uploads_prod:
+    driver: local
+
+networks:
+  mmm-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

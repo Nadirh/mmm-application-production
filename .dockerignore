@@ -1,0 +1,86 @@
+# Git
+.git
+.gitignore
+
+# Documentation
+README.md
+docs/
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env
+pip-log.txt
+pip-delete-this-directory.txt
+.tox
+.coverage
+.coverage.*
+.pytest_cache
+htmlcov/
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Runtime data
+*.pid
+*.seed
+*.pid.lock
+
+# Dependencies
+node_modules/
+
+# Build outputs
+build/
+dist/
+*.egg-info/
+
+# Database files (will be created in container)
+*.db
+*.sqlite
+*.sqlite3
+
+# Uploads (will be mounted as volume)
+static/uploads/*
+
+# Cache
+.cache/
+.mypy_cache/
+
+# Test files
+tests/
+test_*
+
+# Development files
+.env
+docker-compose.override.yml
+
+# Temporary files
+tmp/
+temp/
+*.tmp
