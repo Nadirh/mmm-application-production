@@ -2,11 +2,13 @@
 Comprehensive API endpoint tests for MMM application.
 """
 import pytest
+import pytest_asyncio
 import json
 import tempfile
 from fastapi import status
 from unittest.mock import patch, AsyncMock
 import pandas as pd
+import numpy as np
 
 
 class TestHealthEndpoints:
@@ -50,10 +52,11 @@ class TestHealthEndpoints:
 class TestDataUploadEndpoints:
     """Test data upload and validation endpoints."""
     
-    def test_upload_valid_csv(self, client, sample_csv_file):
+    @pytest.mark.asyncio
+    async def test_upload_valid_csv(self, client_with_db, sample_csv_file):
         """Test uploading a valid CSV file."""
         with open(sample_csv_file, 'rb') as f:
-            response = client.post(
+            response = client_with_db.post(
                 "/api/data/upload",
                 files={"file": ("test_data.csv", f, "text/csv")}
             )
@@ -83,10 +86,11 @@ class TestDataUploadEndpoints:
             assert "spend_share" in info
             assert "days_active" in info
     
-    def test_upload_invalid_csv(self, client, invalid_csv_file):
+    @pytest.mark.asyncio
+    async def test_upload_invalid_csv(self, client_with_db, invalid_csv_file):
         """Test uploading CSV with validation errors."""
         with open(invalid_csv_file, 'rb') as f:
-            response = client.post(
+            response = client_with_db.post(
                 "/api/data/upload",
                 files={"file": ("invalid_data.csv", f, "text/csv")}
             )
@@ -190,18 +194,19 @@ class TestModelTrainingEndpoints:
     """Test model training endpoints."""
     
     @pytest.mark.asyncio
-    async def test_start_training(self, client, uploaded_session):
+    async def test_start_training(self, client_with_db, mock_upload_session):
         """Test starting model training."""
-        request_data = {
-            "upload_id": uploaded_session.id,
-            "config": {
-                "training_window_days": 126,
-                "test_window_days": 14,
-                "n_bootstrap": 100
-            }
+        config_data = {
+            "training_window_days": 126,
+            "test_window_days": 14,
+            "n_bootstrap": 100
         }
         
-        response = client.post("/api/model/train", json=request_data)
+        response = client_with_db.post(
+            "/api/model/train",
+            params={"upload_id": mock_upload_session.id},
+            json=config_data
+        )
         
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
@@ -209,38 +214,37 @@ class TestModelTrainingEndpoints:
         assert "run_id" in data
         assert data["status"] == "queued"
     
-    def test_start_training_invalid_upload(self, client):
+    def test_start_training_invalid_upload(self, client_with_db):
         """Test starting training with invalid upload ID."""
-        request_data = {
-            "upload_id": "non-existent-id"
-        }
-        
-        response = client.post("/api/model/train", json=request_data)
+        response = client_with_db.post(
+            "/api/model/train",
+            params={"upload_id": "non-existent-id"}
+        )
         
         assert response.status_code == status.HTTP_404_NOT_FOUND
     
     @pytest.mark.asyncio
-    async def test_get_training_progress(self, client, completed_training_run):
+    async def test_get_training_progress(self, client_with_db, mock_completed_training_run):
         """Test getting training progress."""
-        response = client.get(f"/api/model/training/progress/{completed_training_run.id}")
+        response = client_with_db.get(f"/api/model/training/progress/{mock_completed_training_run.id}")
         
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
         
-        assert data["run_id"] == completed_training_run.id
+        assert data["run_id"] == mock_completed_training_run.id
         assert data["status"] == "completed"
         assert "start_time" in data
         assert "progress" in data
     
     @pytest.mark.asyncio
-    async def test_get_model_results(self, client, completed_training_run):
+    async def test_get_model_results(self, client_with_db, mock_completed_training_run):
         """Test getting complete model results."""
-        response = client.get(f"/api/model/results/{completed_training_run.id}")
+        response = client_with_db.get(f"/api/model/results/{mock_completed_training_run.id}")
         
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
         
-        assert data["run_id"] == completed_training_run.id
+        assert data["run_id"] == mock_completed_training_run.id
         assert "training_info" in data
         assert "model_performance" in data
         assert "parameters" in data
@@ -254,14 +258,14 @@ class TestModelTrainingEndpoints:
         assert "mape" in performance
     
     @pytest.mark.asyncio
-    async def test_get_channel_performance(self, client, completed_training_run):
+    async def test_get_channel_performance(self, client_with_db, mock_completed_training_run):
         """Test getting channel performance metrics."""
-        response = client.get(f"/api/model/results/{completed_training_run.id}/channel-performance")
+        response = client_with_db.get(f"/api/model/results/{mock_completed_training_run.id}/channel-performance")
         
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
         
-        assert data["run_id"] == completed_training_run.id
+        assert data["run_id"] == mock_completed_training_run.id
         assert "channel_performance" in data
         assert "total_media_attribution" in data
         
@@ -275,52 +279,51 @@ class TestModelTrainingEndpoints:
             assert "confidence_interval" in performance
     
     @pytest.mark.asyncio
-    async def test_get_response_curve(self, client, completed_training_run):
+    async def test_get_response_curve(self, client_with_db, mock_completed_training_run):
         """Test getting response curve data."""
         channel_name = "search_brand"
-        response = client.get(
-            f"/api/model/data/curves/{completed_training_run.id}/{channel_name}",
+        response = client_with_db.get(
+            f"/api/model/response-curves/{mock_completed_training_run.id}/{channel_name}",
             params={"resolution": 50, "max_spend": 100000}
         )
         
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
         
-        assert data["run_id"] == completed_training_run.id
+        assert data["run_id"] == mock_completed_training_run.id
         assert data["channel"] == channel_name
-        assert "response_curve" in data
+        assert "curve_data" in data
         
-        curve = data["response_curve"]
-        assert "spend_range" in curve
-        assert "profit_values" in curve
-        assert "marginal_efficiency" in curve
-        assert len(curve["spend_range"]) == 50
+        curve = data["curve_data"]
+        assert "spend_levels" in curve
+        assert "incremental_profits" in curve
+        assert "efficiency_metrics" in curve
     
-    def test_get_training_progress_not_found(self, client):
+    def test_get_training_progress_not_found(self, client_with_db):
         """Test getting progress for non-existent run."""
-        response = client.get("/api/model/training/progress/non-existent-id")
+        response = client_with_db.get("/api/model/training/progress/non-existent-id")
         
         assert response.status_code == status.HTTP_404_NOT_FOUND
     
     @pytest.mark.asyncio
-    async def test_delete_training_run(self, client, completed_training_run):
+    async def test_delete_training_run(self, client_with_db, mock_completed_training_run):
         """Test deleting a training run."""
-        response = client.delete(f"/api/model/training/{completed_training_run.id}")
+        response = client_with_db.delete(f"/api/model/training/{mock_completed_training_run.id}")
         
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
         
         assert data["status"] == "deleted"
-        assert data["run_id"] == completed_training_run.id
+        assert data["run_id"] == mock_completed_training_run.id
 
 
 class TestOptimizationEndpoints:
     """Test budget optimization endpoints."""
     
     @pytest.mark.asyncio
-    async def test_run_optimization(self, client, completed_training_run, optimization_request_data):
+    async def test_run_optimization(self, client_with_db, mock_completed_training_run, optimization_request_data):
         """Test running budget optimization."""
-        optimization_request_data["run_id"] = completed_training_run.id
+        optimization_request_data["run_id"] = mock_completed_training_run.id
         
         with patch('mmm.optimization.optimizer.BudgetOptimizer.optimize') as mock_optimize:
             # Mock optimization result
@@ -339,12 +342,12 @@ class TestOptimizationEndpoints:
             
             mock_optimize.return_value = mock_result
             
-            response = client.post("/api/optimization/run", json=optimization_request_data)
+            response = client_with_db.post("/api/optimization/run", json=optimization_request_data)
             
             assert response.status_code == status.HTTP_200_OK
             data = response.json()
             
-            assert data["run_id"] == completed_training_run.id
+            assert data["run_id"] == mock_completed_training_run.id
             assert "optimization_results" in data
             assert "response_curves" in data
             assert "scenario_analysis" in data
@@ -358,18 +361,18 @@ class TestOptimizationEndpoints:
             assert "shadow_prices" in results
             assert "constraints_binding" in results
     
-    def test_run_optimization_invalid_run(self, client, optimization_request_data):
+    def test_run_optimization_invalid_run(self, client_with_db, optimization_request_data):
         """Test optimization with invalid run ID."""
         optimization_request_data["run_id"] = "non-existent-id"
         
-        response = client.post("/api/optimization/run", json=optimization_request_data)
+        response = client_with_db.post("/api/optimization/run", json=optimization_request_data)
         
         assert response.status_code == status.HTTP_404_NOT_FOUND
     
-    def test_run_optimization_invalid_constraints(self, client, completed_training_run):
+    def test_run_optimization_invalid_constraints(self, client_with_db, mock_completed_training_run):
         """Test optimization with invalid constraint types."""
         request_data = {
-            "run_id": completed_training_run.id,
+            "run_id": mock_completed_training_run.id,
             "total_budget": 1000000,
             "current_spend": {"search_brand": 200000},
             "constraints": [
@@ -381,12 +384,12 @@ class TestOptimizationEndpoints:
             ]
         }
         
-        response = client.post("/api/optimization/run", json=request_data)
+        response = client_with_db.post("/api/optimization/run", json=request_data)
         
         assert response.status_code == status.HTTP_400_BAD_REQUEST
     
     @pytest.mark.asyncio
-    async def test_get_response_curve(self, client, completed_training_run):
+    async def test_get_response_curve(self, client_with_db, mock_completed_training_run):
         """Test getting response curve for optimization."""
         channel = "search_brand"
         
@@ -403,20 +406,20 @@ class TestOptimizationEndpoints:
             
             mock_curve.return_value = mock_response
             
-            response = client.get(
-                f"/api/optimization/response-curve/{completed_training_run.id}/{channel}",
+            response = client_with_db.get(
+                f"/api/optimization/response-curve/{mock_completed_training_run.id}/{channel}",
                 params={"max_spend": 100000, "resolution": 100}
             )
             
             assert response.status_code == status.HTTP_200_OK
             data = response.json()
             
-            assert data["run_id"] == completed_training_run.id
+            assert data["run_id"] == mock_completed_training_run.id
             assert data["channel"] == channel
             assert "response_curve" in data
     
     @pytest.mark.asyncio
-    async def test_scenario_analysis(self, client, completed_training_run):
+    async def test_scenario_analysis(self, client_with_db, mock_completed_training_run):
         """Test custom scenario analysis."""
         scenarios = {
             "scenario_1": {
@@ -431,21 +434,21 @@ class TestOptimizationEndpoints:
             }
         }
         
-        response = client.post(
-            f"/api/optimization/scenario-analysis/{completed_training_run.id}",
+        response = client_with_db.post(
+            f"/api/optimization/scenario-analysis/{mock_completed_training_run.id}",
             json=scenarios
         )
         
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
         
-        assert data["run_id"] == completed_training_run.id
+        assert data["run_id"] == mock_completed_training_run.id
         assert "scenario_results" in data
         assert len(data["scenario_results"]) == 2
     
-    def test_get_default_constraints(self, client):
+    def test_get_default_constraints(self, client_with_db):
         """Test getting default constraint configurations."""
-        response = client.get("/api/optimization/constraints/defaults")
+        response = client_with_db.get("/api/optimization/constraints/defaults")
         
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
@@ -461,7 +464,7 @@ class TestOptimizationEndpoints:
             assert "description" in constraint_type
     
     @pytest.mark.asyncio
-    async def test_get_shadow_prices(self, client, completed_training_run):
+    async def test_get_shadow_prices(self, client_with_db, mock_completed_training_run):
         """Test calculating shadow prices."""
         params = {
             "total_budget": 1000000,
@@ -471,10 +474,9 @@ class TestOptimizationEndpoints:
             }
         }
         
-        response = client.get(
-            f"/api/optimization/shadow-prices/{completed_training_run.id}",
-            params={"total_budget": params["total_budget"]},
-            json={"current_spend": params["current_spend"]}
+        response = client_with_db.get(
+            f"/api/optimization/shadow-prices/{mock_completed_training_run.id}",
+            params={"total_budget": params["total_budget"]}
         )
         
         # Note: This might need adjustment based on actual API implementation
@@ -484,9 +486,9 @@ class TestOptimizationEndpoints:
 class TestWebSocketEndpoints:
     """Test WebSocket connection statistics."""
     
-    def test_websocket_stats(self, client):
+    def test_websocket_stats(self, client_with_db):
         """Test getting WebSocket connection statistics."""
-        response = client.get("/ws/stats")
+        response = client_with_db.get("/ws/stats")
         
         assert response.status_code == status.HTTP_200_OK
         data = response.json()

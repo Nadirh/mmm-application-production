@@ -65,6 +65,13 @@ def client():
     return TestClient(app)
 
 
+@pytest_asyncio.fixture
+async def client_with_db(test_db):
+    """Create a test client with database setup."""
+    # The test_db fixture sets up the database and dependency override
+    return TestClient(app)
+
+
 @pytest.fixture
 def sample_csv_data():
     """Generate sample CSV data for testing."""
@@ -145,6 +152,140 @@ def minimal_csv_file(minimal_csv_data, tmp_path):
     csv_file = tmp_path / "minimal_data.csv"
     minimal_csv_data.to_csv(csv_file, index=False)
     return str(csv_file)
+
+
+@pytest.fixture
+def mock_completed_training_run(mock_upload_session):
+    """Create a mock completed training run in the in-memory storage."""
+    from mmm.api.routes.model import training_runs
+    
+    run_id = "test-run-456"
+    
+    # Create mock training run
+    training_runs[run_id] = {
+        "run_id": run_id,
+        "upload_id": mock_upload_session.id,
+        "status": "completed",
+        "start_time": datetime(2023, 1, 1),
+        "completion_time": datetime(2023, 1, 1),
+        "config": {
+            "training_window_days": 126,
+            "test_window_days": 14,
+            "n_bootstrap": 100
+        },
+        "training_config": {
+            "training_window_days": 126,
+            "test_window_days": 14,
+            "n_bootstrap": 100
+        },
+        "model_parameters": {
+            "alpha_baseline": 1000.0,
+            "alpha_trend": 0.5,
+            "channel_alphas": {
+                "search_brand": 0.8,
+                "search_nonbrand": 1.2,
+                "social_facebook": 0.6,
+                "display_programmatic": 0.9,
+                "tv_video": 1.1
+            },
+            "channel_betas": {
+                "search_brand": 0.6,
+                "search_nonbrand": 0.7,
+                "social_facebook": 0.5,
+                "display_programmatic": 0.6,
+                "tv_video": 0.4
+            },
+            "channel_rs": {
+                "search_brand": 0.1,
+                "search_nonbrand": 0.2,
+                "social_facebook": 0.4,
+                "display_programmatic": 0.3,
+                "tv_video": 0.6
+            }
+        },
+        "model_performance": {
+            "cv_mape": 18.5,
+            "r_squared": 0.82,
+            "mape": 16.2
+        },
+        "diagnostics": {
+            "media_attribution_percentage": 65.0,
+            "channel_attributions": {
+                "search_brand": 800000,
+                "search_nonbrand": 1200000,
+                "social_facebook": 600000,
+                "display_programmatic": 900000,
+                "tv_video": 1100000
+            }
+        },
+        "confidence_intervals": {
+            "search_brand": [720000, 880000],
+            "search_nonbrand": [1080000, 1320000],
+            "social_facebook": [540000, 660000],
+            "display_programmatic": [810000, 990000],
+            "tv_video": [990000, 1210000]
+        },
+        "results": type('MockResults', (), {
+            "parameters": type('MockParams', (), {
+                "alpha_baseline": 1000.0,
+                "alpha_trend": 0.5,
+                "channel_alphas": {
+                    "search_brand": 0.8,
+                    "search_nonbrand": 1.2,
+                    "social_facebook": 0.6,
+                    "display_programmatic": 0.9,
+                    "tv_video": 1.1
+                },
+                "channel_betas": {
+                    "search_brand": 0.6,
+                    "search_nonbrand": 0.7,
+                    "social_facebook": 0.5,
+                    "display_programmatic": 0.6,
+                    "tv_video": 0.4
+                },
+                "channel_rs": {
+                    "search_brand": 0.1,
+                    "search_nonbrand": 0.2,
+                    "social_facebook": 0.4,
+                    "display_programmatic": 0.3,
+                    "tv_video": 0.6
+                }
+            })(),
+            "cv_mape": 18.5,
+            "r_squared": 0.82,
+            "mape": 16.2,
+            "diagnostics": {
+                "media_attribution_percentage": 65.0,
+                "channel_attributions": {
+                    "search_brand": 800000,
+                    "search_nonbrand": 1200000,
+                    "social_facebook": 600000,
+                    "display_programmatic": 900000,
+                    "tv_video": 1100000
+                }
+            },
+            "confidence_intervals": {
+                "search_brand": [720000, 880000],
+                "search_nonbrand": [1080000, 1320000],
+                "social_facebook": [540000, 660000],
+                "display_programmatic": [810000, 990000],
+                "tv_video": [990000, 1210000]
+            }
+        })()
+    }
+    
+    # Create a mock object that has the attributes the tests expect
+    class MockCompletedTrainingRun:
+        def __init__(self):
+            self.id = run_id
+    
+    mock_run = MockCompletedTrainingRun()
+    
+    yield mock_run
+    
+    # Clean up
+    if run_id in training_runs:
+        del training_runs[run_id]
 
 
 @pytest.fixture

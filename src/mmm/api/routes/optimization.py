@@ -113,6 +113,9 @@ async def run_optimization(request: OptimizationRequest) -> Dict[str, Any]:
             "scenario_analysis": result.scenario_analysis
         }
         
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is (like 400 for invalid constraints)
+        raise
     except Exception as e:
         logger.error("Budget optimization failed", run_id=request.run_id, error=str(e))
         raise HTTPException(status_code=500, detail=f"Optimization failed: {str(e)}")
@@ -199,7 +202,6 @@ async def run_scenario_analysis(
             total_budget = scenario_config.get("total_budget", 0)
             
             # Simple profit calculation for scenario
-            from mmm.optimization.optimizer import BudgetOptimizer
             scenario_optimizer = BudgetOptimizer(model_params)
             
             profit = scenario_optimizer._calculate_profit(
@@ -218,6 +220,9 @@ async def run_scenario_analysis(
             "scenario_results": scenario_results
         }
         
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
     except Exception as e:
         logger.error("Scenario analysis failed", run_id=run_id, error=str(e))
         raise HTTPException(status_code=500, detail=f"Scenario analysis failed: {str(e)}")

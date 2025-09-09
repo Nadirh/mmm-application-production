@@ -318,6 +318,115 @@ class TestMMMModelMathematics:
         except Exception as e:
             pytest.fail(f"Model failed with noisy data: {e}")
 
+    def test_model_parameter_recovery_3x3_grid(self):
+        """Test model parameter recovery with 3x3 parameter grid (9 combinations per channel)."""
+        # Generate smaller synthetic dataset for faster testing
+        np.random.seed(42)
+        n_days = 90  # Reduced from 365 for speed
+        
+        # Generate simplified synthetic data
+        dates = pd.date_range('2023-01-01', periods=n_days, freq='D')
+        data = {
+            'date': dates,
+            'search': np.random.exponential(1000, n_days).clip(0, 5000),
+            'social': np.random.exponential(800, n_days).clip(0, 4000),
+            'tv': np.random.exponential(1500, n_days).clip(0, 6000),
+        }
+        
+        # Simple profit calculation with known relationships
+        profit = (500 +  # baseline
+                 0.8 * np.power(data['search'], 0.7) +
+                 0.6 * np.power(data['social'], 0.5) + 
+                 1.2 * np.power(data['tv'], 0.4) +
+                 np.random.normal(0, 200, n_days))  # noise
+        
+        data['profit'] = np.clip(profit, 100, None)
+        df = pd.DataFrame(data)
+        
+        # Process data
+        processor = DataProcessor()
+        processed_df, channel_info = processor.process_data(df)
+        
+        # Use 3x3 parameter grids for more thorough testing
+        channel_grids = {
+            'search': {
+                'beta': [0.6, 0.7, 0.8],  # 3 beta values
+                'r': [0.1, 0.2, 0.3]      # 3 r values = 9 combinations
+            },
+            'social': {
+                'beta': [0.4, 0.5, 0.6],
+                'r': [0.2, 0.3, 0.4]      # 9 combinations
+            },
+            'tv': {
+                'beta': [0.3, 0.4, 0.5],
+                'r': [0.5, 0.6, 0.7]      # 9 combinations
+            }
+        }
+        
+        # Total combinations per channel: 9 (vs 729 for full 9x9 grid)
+        
+        # Initialize model with minimal settings for fast testing
+        model = MMMModel(
+            training_window_days=30,  # Much shorter for faster testing
+            test_window_days=5,
+            n_bootstrap=10           # Minimal bootstrap for speed
+        )
+        
+        # Track progress for debugging
+        progress_updates = []
+        def track_progress(update):
+            progress_updates.append(update)
+            if update.get("type") == "parameter_optimization":
+                print(f"Fold {update['fold']}: Testing combination {update['combination']}/{update['total_combinations']}")
+        
+        # Fit model
+        results = model.fit(processed_df, channel_grids, track_progress)
+        
+        # Verify model performance (relaxed expectations for small dataset)
+        assert results.cv_mape < 50, f"CV MAPE too high: {results.cv_mape}"
+        assert results.r_squared > 0.2, f"R-squared too low: {results.r_squared}"
+        assert results.mape < 45, f"MAPE too high: {results.mape}"
+        
+        # Check that parameters are within the tested ranges
+        for channel in ['search', 'social', 'tv']:
+            estimated_alpha = results.parameters.channel_alphas[channel]
+            estimated_beta = results.parameters.channel_betas[channel]
+            estimated_r = results.parameters.channel_rs[channel]
+            
+            # Verify parameter bounds
+            assert estimated_alpha >= 0, f"Alpha for {channel} should be non-negative: {estimated_alpha}"
+            assert estimated_alpha < 10, f"Alpha for {channel} should be reasonable: {estimated_alpha}"
+            
+            # Check that selected parameters are from our grid
+            if channel == 'search':
+                assert estimated_beta in [0.6, 0.7, 0.8], f"Beta for {channel} not in grid: {estimated_beta}"
+                assert estimated_r in [0.1, 0.2, 0.3], f"R for {channel} not in grid: {estimated_r}"
+            elif channel == 'social':
+                assert estimated_beta in [0.4, 0.5, 0.6], f"Beta for {channel} not in grid: {estimated_beta}"
+                assert estimated_r in [0.2, 0.3, 0.4], f"R for {channel} not in grid: {estimated_r}"
+            elif channel == 'tv':
+                assert estimated_beta in [0.3, 0.4, 0.5], f"Beta for {channel} not in grid: {estimated_beta}"
+                assert estimated_r in [0.5, 0.6, 0.7], f"R for {channel} not in grid: {estimated_r}"
+        
+        # Verify that grid search actually tested multiple combinations
+        param_opt_updates = [u for u in progress_updates if u.get("type") == "parameter_optimization"]
+        if param_opt_updates:
+            max_combinations = max(u.get("total_combinations", 0) for u in param_opt_updates)
+            assert max_combinations == 9, f"Expected 9 combinations per fold, got {max_combinations}"
+        
+        # Print results for comparison with 1x1 grid
+        print(f"\n3x3 Grid Results:")
+        print(f"  CV MAPE: {results.cv_mape:.2f}")
+        print(f"  R-squared: {results.r_squared:.3f}")
+        print(f"  Selected betas: {results.parameters.channel_betas}")
+        print(f"  Selected rs: {results.parameters.channel_rs}")
+        
+        # Ensure the test actually used multiple parameter combinations
+        unique_betas = set(results.parameters.channel_betas.values())
+        unique_rs = set(results.parameters.channel_rs.values())
+        print(f"  Unique beta values selected: {len(unique_betas)}")
+        print(f"  Unique r values selected: {len(unique_rs)}")
+
 
 class TestOptimizationMathematics:
     """Test budget optimization mathematical functions."""
