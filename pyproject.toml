@@ -122,3 +122,6 @@ minversion = "7.0"
 addopts = "-ra -q --strict-markers --cov=src/mmm --cov-report=term-missing"
 testpaths = ["tests"]
 pythonpath = ["src"]
+markers = [
+    "performance: marks tests as performance tests (deselect with '-m \"not performance\"')"
+]

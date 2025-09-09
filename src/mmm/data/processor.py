@@ -95,10 +95,15 @@ class DataProcessor:
         """Analyzes channel characteristics and classifies channel types."""
         channel_info = {}
         
-        # Get spend columns (excluding date, profit, and control variables)
+        # Get spend columns (excluding date, profit, and control variables, only numeric columns)
         exclude_cols = ["date", "profit", "is_holiday", "promo_flag", "site_outage", 
                        "days_since_start", "day_of_week", "is_weekend", "month"]
-        spend_columns = [col for col in df.columns if col not in exclude_cols]
+        spend_columns = [col for col in df.columns 
+                        if col not in exclude_cols and pd.api.types.is_numeric_dtype(df[col])]
+        
+        # Skip processing if no spend columns found
+        if not spend_columns:
+            return {}
         
         total_spend = df[spend_columns].sum().sum()
         
@@ -153,9 +158,10 @@ class DataProcessor:
         """Final validation and cleaning of processed data."""
         df = df.copy()
         
-        # Ensure no negative values in spend columns
+        # Ensure no negative values in spend columns (numeric only)
         exclude_cols = ["date", "profit", "days_since_start", "day_of_week", "is_weekend", "month"]
-        spend_columns = [col for col in df.columns if col not in exclude_cols]
+        spend_columns = [col for col in df.columns 
+                        if col not in exclude_cols and pd.api.types.is_numeric_dtype(df[col])]
         
         for col in spend_columns:
             df[col] = df[col].clip(lower=0)
