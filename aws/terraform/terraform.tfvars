@@ -1,0 +1,24 @@
+# Terraform variables for MMM Application
+# Copy this to terraform.tfvars and update with your values
+
+# Basic configuration
+aws_region  = "us-east-1"
+environment = "production"
+
+# Billing alerts configuration
+billing_alert_email = "nadirh@gmail.com"
+billing_thresholds  = [100, 200, 500]           # Alert thresholds in USD
+
+# Network configuration (optional)
+vpc_cidr = "10.0.0.0/16"
+
+# Example client configuration (you can also use clients.auto.tfvars)
+# client_configs = {
+#   "client_1" = {
+#     client_id     = "mmm-demo"
+#     domain_name   = "demo.mmm.yourdomain.com"
+#     db_instance   = "db.t3.small"
+#     min_capacity  = 1
+#     max_capacity  = 3
+#   }
+# }

@@ -1,0 +1,316 @@
+Metadata-Version: 2.4
+Name: mmm-application
+Version: 1.0.0
+Summary: Media Mix Modeling Application for Marketing Attribution and Budget Optimization
+Author-email: MMM Team <mmm@company.com>
+License: MIT
+Project-URL: Homepage, https://github.com/company/mmm-application
+Project-URL: Bug Reports, https://github.com/company/mmm-application/issues
+Project-URL: Source, https://github.com/company/mmm-application
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+Requires-Dist: fastapi>=0.104.0
+Requires-Dist: uvicorn[standard]>=0.24.0
+Requires-Dist: numpy>=1.21.0
+Requires-Dist: pandas>=1.3.0
+Requires-Dist: scipy>=1.7.0
+Requires-Dist: scikit-learn>=1.0.0
+Requires-Dist: statsmodels>=0.13.0
+Requires-Dist: pydantic>=2.0.0
+Requires-Dist: python-multipart>=0.0.6
+Requires-Dist: websockets>=11.0.0
+Requires-Dist: aiofiles>=23.0.0
+Requires-Dist: sqlalchemy>=2.0.0
+Requires-Dist: alembic>=1.12.0
+Requires-Dist: aiosqlite>=0.19.0
+Requires-Dist: redis>=5.0.0
+Requires-Dist: python-dotenv>=1.0.0
+Requires-Dist: structlog>=23.0.0
+Requires-Dist: pytest>=7.0.0
+Requires-Dist: pytest-asyncio>=0.21.0
+Requires-Dist: httpx>=0.25.0
+Provides-Extra: dev
+Requires-Dist: black>=23.0.0; extra == "dev"
+Requires-Dist: isort>=5.12.0; extra == "dev"
+Requires-Dist: flake8>=6.0.0; extra == "dev"
+Requires-Dist: mypy>=1.5.0; extra == "dev"
+Requires-Dist: pre-commit>=3.0.0; extra == "dev"
+Requires-Dist: pytest-cov>=4.1.0; extra == "dev"
+Requires-Dist: pytest-mock>=3.11.0; extra == "dev"
+
+# Media Mix Modeling Application
+
+A comprehensive Media Mix Modeling (MMM) application for marketing attribution and budget optimization. This application helps businesses understand the incremental contribution of each marketing channel to profit and provides recommendations for optimal budget allocation.
+
+## Features
+
+### Core Functionality
+- **Data Upload & Validation**: Upload CSV data with comprehensive validation and quality scoring
+- **Model Training**: Walk-forward cross-validation with parameter optimization
+- **Budget Optimization**: Mathematical optimization with business constraints
+- **Interactive Dashboard**: Real-time progress monitoring and visualization
+
+### Business Capabilities
+- **Channel Attribution**: Understand incremental contribution of each marketing channel
+- **Budget Recommendations**: Get optimal budget allocation recommendations
+- **Scenario Planning**: Analyze different budget scenarios and their impact
+- **Constraint Management**: Apply business constraints (floors, caps, locks, ramp limits)
+
+## Quick Start
+
+### Prerequisites
+- Python 3.8 or higher
+- 8GB+ RAM recommended
+- CSV data with daily marketing spend and profit metrics
+
+### Installation
+
+#### Option 1: Docker (Recommended)
+
+1. **Clone the repository**
+   ```bash
+   git clone <repository-url>
+   cd mmm-application
+   ```
+
+2. **Start with Docker Compose**
+   ```bash
+   make docker-up-build
+   ```
+
+3. **Access the application**
+   - API: http://localhost:8000
+   - WebSocket Test: http://localhost:8000/static/websocket_test.html
+   - API Documentation: http://localhost:8000/docs
+
+#### Option 2: Local Development
+
+1. **Clone the repository**
+   ```bash
+   git clone <repository-url>
+   cd mmm-application
+   ```
+
+2. **Set up development environment**
+   ```bash
+   make setup
+   ```
+
+3. **Configure environment**
+   ```bash
+   cp .env.example .env
+   # Edit .env file with your configuration
+   ```
+
+4. **Run the application**
+   ```bash
+   make run-dev
+   ```
+
+The API will be available at `http://localhost:8000`. Visit `http://localhost:8000/docs` for interactive API documentation.
+
+## Data Requirements
+
+### Required Columns
+- `date`: Daily date in YYYY-MM-DD format
+- `profit`: Daily profit/revenue metric (non-negative)
+- `[Channel_Name]`: Daily spend for each marketing channel (non-negative)
+
+### Optional Columns
+- `is_holiday`: Holiday flag (0/1)
+- `promo_flag`: Promotion flag (0/1)
+- `site_outage`: Site outage flag (0/1)
+
+### Business Tier Requirements
+
+| Tier | Min Days | Min Annual Spend | Min Channel Spend | MAPE Target |
+|------|----------|------------------|-------------------|-------------|
+| Enterprise | 365 | $2M+ | $25K+ per channel | ≤20% |
+| Mid-Market | 280 | $500K-$2M | $15K+ per channel | ≤25% |
+| Small Business | 182 | $200K-$500K | $8K+ per channel | ≤35% |
+| Prototype | 182 | $50K-$200K | Any | ≤50% |
+
+## API Usage
+
+### 1. Upload Data
+```bash
+curl -X POST "http://localhost:8000/api/data/upload" \
+  -H "accept: application/json" \
+  -H "Content-Type: multipart/form-data" \
+  -F "file=@your_data.csv"
+```
+
+### 2. Train Model
+```bash
+curl -X POST "http://localhost:8000/api/model/train" \
+  -H "accept: application/json" \
+  -H "Content-Type: application/json" \
+  -d '{"upload_id": "your-upload-id"}'
+```
+
+### 3. Optimize Budget
+```bash
+curl -X POST "http://localhost:8000/api/optimization/run" \
+  -H "accept: application/json" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "run_id": "your-run-id",
+    "total_budget": 1000000,
+    "current_spend": {
+      "search": 300000,
+      "social": 200000,
+      "display": 500000
+    }
+  }'
+```
+
+## Mathematical Model
+
+The MMM uses the following mathematical formulation:
+
+```
+Profit_t = Baseline_t + Σ(α_c × Adstock_t_c^β_c) + ε_t
+
+Where:
+- Baseline_t = α_baseline + α_trend × days_since_start_t
+- Adstock_t_c = Spend_t_c + r_c × Adstock_(t-1)_c
+- α_c ≥ 0 (channel incremental strength)
+- 0.1 ≤ β_c ≤ 1.0 (saturation parameter)  
+- 0 ≤ r_c < 0.99 (adstock/memory parameter)
+```
+
+### Parameter Grid by Channel Type
+
+| Channel Type | Beta Range | R Range | Combinations |
+|--------------|------------|---------|--------------|
+| Search Brand | 0.4-0.8 | 0.0-0.2 | 81 |
+| Search Non-Brand | 0.5-0.9 | 0.1-0.3 | 81 |
+| Social | 0.3-0.7 | 0.2-0.6 | 81 |
+| TV/Video | 0.2-0.6 | 0.4-0.8 | 81 |
+| Display | 0.3-0.7 | 0.1-0.5 | 81 |
+
+## Docker Deployment
+
+### Quick Start with Docker
+
+```bash
+# Development environment
+make docker-up-build
+
+# Production environment
+make docker-prod-build
+
+# View logs
+make docker-logs
+
+# Stop services
+make docker-down
+```
+
+### Docker Features
+
+- **🐳 Multi-stage builds** for optimized production images
+- **🔗 Redis integration** for caching and session management
+- **📊 Health checks** and monitoring
+- **🔒 Security** with non-root user and proper networking
+- **📈 Resource management** with configurable limits
+- **🔄 Auto-restart** policies for production reliability
+
+For detailed Docker documentation, see [DOCKER.md](DOCKER.md).
+
+## Development
+
+### Project Structure
+```
+src/mmm/
+├── api/           # FastAPI application and routes
+├── data/          # Data processing and validation
+├── model/         # Core MMM model implementation
+├── optimization/  # Budget optimization engine
+├── config/        # Configuration management
+└── utils/         # Utility functions
+```
+
+### Development Commands
+```bash
+make help          # Show available commands
+make dev-install   # Install development dependencies
+make test          # Run tests with coverage
+make lint          # Run linting
+make format        # Format code
+make type-check    # Run type checking
+make quality       # Run all quality checks
+```
+
+### Running Tests
+```bash
+make test          # Full test suite with coverage
+make test-fast     # Fast tests without coverage
+```
+
+### Code Quality
+```bash
+make lint          # Check code style
+make format        # Auto-format code
+make type-check    # Type checking with mypy
+```
+
+## Configuration
+
+Key configuration options in `.env`:
+
+```bash
+# Environment
+MMM_ENV=development
+
+# Server
+HOST=0.0.0.0
+PORT=8000
+
+# Model training
+TRAINING_WINDOW_DAYS=126
+TEST_WINDOW_DAYS=14
+N_BOOTSTRAP=1000
+
+# File upload
+MAX_FILE_SIZE_MB=100
+
+# Logging
+LOG_LEVEL=INFO
+USE_JSON_LOGGING=true
+```
+
+## Performance Targets
+
+| Endpoint | Target Response Time |
+|----------|---------------------|
+| Model Status | < 500ms |
+| Optimization Run | < 5000ms |
+| Response Curves (cached) | < 1000ms |
+| Dashboard Interactions | < 500ms |
+
+## License
+
+This project is licensed under the MIT License.
+
+## Support
+
+For questions, issues, or contributions, please create an issue in the repository.
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Run quality checks: `make quality`
+5. Submit a pull request
+
+Please ensure all tests pass and code follows the established patterns before submitting.

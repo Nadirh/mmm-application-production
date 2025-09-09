@@ -1,0 +1,128 @@
+name: Deploy Staging
+
+on:
+  push:
+    branches: [ develop ]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: staging
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    
+    - name: Set up kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'v1.28.0'
+    
+    - name: Configure kubectl
+      run: |
+        echo "${{ secrets.KUBE_CONFIG_STAGING }}" | base64 -d > kubeconfig
+        export KUBECONFIG=kubeconfig
+        kubectl config current-context
+      env:
+        KUBE_CONFIG_STAGING: ${{ secrets.KUBE_CONFIG_STAGING }}
+    
+    - name: Create namespace if not exists
+      run: |
+        export KUBECONFIG=kubeconfig
+        kubectl create namespace mmm-staging --dry-run=client -o yaml | kubectl apply -f -
+    
+    - name: Deploy Redis to staging
+      run: |
+        export KUBECONFIG=kubeconfig
+        cat <<EOF | kubectl apply -f -
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: redis-staging
+          namespace: mmm-staging
+        spec:
+          replicas: 1
+          selector:
+            matchLabels:
+              app: redis
+              environment: staging
+          template:
+            metadata:
+              labels:
+                app: redis
+                environment: staging
+            spec:
+              containers:
+              - name: redis
+                image: redis:7-alpine
+                ports:
+                - containerPort: 6379
+                resources:
+                  requests:
+                    memory: "128Mi"
+                    cpu: "100m"
+                  limits:
+                    memory: "256Mi"
+                    cpu: "200m"
+        ---
+        apiVersion: v1
+        kind: Service
+        metadata:
+          name: redis-service-staging
+          namespace: mmm-staging
+        spec:
+          selector:
+            app: redis
+            environment: staging
+          ports:
+          - port: 6379
+            targetPort: 6379
+        EOF
+    
+    - name: Update deployment image
+      run: |
+        export KUBECONFIG=kubeconfig
+        # Update the image tag to use the commit SHA
+        sed -i "s|ghcr.io/your-org/mmm-application:develop|${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}|g" k8s/staging/deployment.yml
+        
+        # Update Redis URL in the deployment
+        sed -i 's/redis-url/redis:\/\/redis-service-staging:6379/g' k8s/staging/deployment.yml
+    
+    - name: Deploy to staging
+      run: |
+        export KUBECONFIG=kubeconfig
+        kubectl apply -f k8s/staging/deployment.yml
+    
+    - name: Wait for rollout
+      run: |
+        export KUBECONFIG=kubeconfig
+        kubectl rollout status deployment/mmm-app-staging -n mmm-staging --timeout=300s
+    
+    - name: Get deployment status
+      run: |
+        export KUBECONFIG=kubeconfig
+        kubectl get pods -n mmm-staging -l app=mmm-application,environment=staging
+        kubectl get services -n mmm-staging
+    
+    - name: Run health check
+      run: |
+        export KUBECONFIG=kubeconfig
+        echo "Waiting for service to be ready..."
+        sleep 30
+        
+        # Port forward to test the service
+        kubectl port-forward -n mmm-staging svc/mmm-service-staging 8080:80 &
+        PORT_FORWARD_PID=$!
+        sleep 10
+        
+        # Test the health endpoint
+        curl -f http://localhost:8080/ || exit 1
+        echo "✅ Staging deployment successful!"
+        
+        # Clean up
+        kill $PORT_FORWARD_PID
