@@ -2,10 +2,11 @@
 Pytest configuration and fixtures for MMM application tests.
 """
 import pytest
+import pytest_asyncio
 import asyncio
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -17,6 +18,8 @@ from mmm.api.main import app
 from mmm.database.connection import Base, get_db
 from mmm.database.models import UploadSession, TrainingRun, OptimizationRun
 from mmm.config.settings import settings
+from mmm.data.validator import DataSummary, BusinessTier
+from mmm.data.processor import ChannelInfo, ChannelType
 
 
 @pytest.fixture(scope="session")
@@ -27,7 +30,7 @@ def event_loop():
     loop.close()
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def test_db():
     """Create a test database."""
     # Use in-memory SQLite for testing
@@ -145,6 +148,66 @@ def minimal_csv_file(minimal_csv_data, tmp_path):
 
 
 @pytest.fixture
+def mock_upload_session(sample_csv_data):
+    """Create a mock upload session in the in-memory storage."""
+    from mmm.api.routes.data import upload_sessions
+    
+    upload_id = "test-upload-123"
+    
+    # Create mock data summary
+    data_summary = DataSummary(
+        total_days=len(sample_csv_data),
+        total_profit=float(sample_csv_data['profit'].sum()),
+        total_annual_spend=float(sample_csv_data[['search_brand', 'search_nonbrand', 
+                                      'social_facebook', 'display_programmatic', 
+                                      'tv_video']].sum().sum()),
+        channel_count=5,
+        date_range=(pd.to_datetime(sample_csv_data['date'].iloc[0]),
+                   pd.to_datetime(sample_csv_data['date'].iloc[-1])),
+        business_tier=BusinessTier.ENTERPRISE,
+        data_quality_score=95.0
+    )
+    
+    # Create mock channel info
+    channel_info = {
+        "search_brand": ChannelInfo(
+            name="search_brand",
+            type=ChannelType.SEARCH_BRAND,
+            total_spend=15000.0,
+            spend_share=0.25,
+            days_active=300
+        )
+    }
+    
+    # Add to in-memory storage
+    upload_sessions[upload_id] = {
+        "filename": "test_data.csv",
+        "upload_time": datetime(2023, 1, 1),
+        "file_path": "/tmp/test_data.csv",
+        "data_summary": data_summary,
+        "validation_errors": [],
+        "channel_info": channel_info,
+        "processed_df": sample_csv_data,
+        "status": "validated"
+    }
+    
+    # Create a mock object that has the attributes the tests expect
+    class MockUploadSession:
+        def __init__(self):
+            self.id = upload_id
+            self.filename = "test_data.csv"
+            self.status = "validated"
+    
+    mock_session = MockUploadSession()
+    
+    yield mock_session
+    
+    # Clean up
+    if upload_id in upload_sessions:
+        del upload_sessions[upload_id]
+
+
+@pytest_asyncio.fixture
 async def uploaded_session(test_db, sample_csv_data):
     """Create a sample upload session in the database."""
     async with test_db() as session:
@@ -152,11 +215,11 @@ async def uploaded_session(test_db, sample_csv_data):
             id="test-upload-123",
             filename="test_data.csv",
             file_path="/tmp/test_data.csv",
-            total_days=len(sample_csv_data),
-            total_profit=sample_csv_data['profit'].sum(),
-            total_annual_spend=sample_csv_data[['search_brand', 'search_nonbrand', 
+            total_days=int(len(sample_csv_data)),
+            total_profit=float(sample_csv_data['profit'].sum()),
+            total_annual_spend=float(sample_csv_data[['search_brand', 'search_nonbrand', 
                                               'social_facebook', 'display_programmatic', 
-                                              'tv_video']].sum().sum(),
+                                              'tv_video']].sum().sum()),
             channel_count=5,
             date_range_start=pd.to_datetime(sample_csv_data['date'].iloc[0]),
             date_range_end=pd.to_datetime(sample_csv_data['date'].iloc[-1]),
@@ -180,7 +243,7 @@ async def uploaded_session(test_db, sample_csv_data):
         return upload_session
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def completed_training_run(test_db, uploaded_session):
     """Create a completed training run in the database."""
     async with test_db() as session:
@@ -188,7 +251,7 @@ async def completed_training_run(test_db, uploaded_session):
             id="test-run-456",
             upload_session_id=uploaded_session.id,
             status="completed",
-            completion_time=datetime.utcnow(),
+            completion_time=datetime.now(UTC),
             training_config={
                 "training_window_days": 126,
                 "test_window_days": 14,

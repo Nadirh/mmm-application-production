@@ -5,7 +5,7 @@ import json
 import asyncio
 from typing import Dict, List, Set, Any, Optional
 from fastapi import WebSocket, WebSocketDisconnect
-from datetime import datetime
+from datetime import datetime, UTC
 import structlog
 
 from mmm.utils.cache import cache_manager
@@ -39,7 +39,7 @@ class ConnectionManager:
         self.connection_metadata[websocket] = {
             "run_id": run_id,
             "session_id": session_id,
-            "connected_at": datetime.utcnow(),
+            "connected_at": datetime.now(UTC),
             "type": "training"
         }
         
@@ -60,7 +60,7 @@ class ConnectionManager:
         # Store metadata
         self.connection_metadata[websocket] = {
             "session_id": session_id,
-            "connected_at": datetime.utcnow(),
+            "connected_at": datetime.now(UTC),
             "type": "session"
         }
         
@@ -70,7 +70,7 @@ class ConnectionManager:
         await self._send_to_websocket(websocket, {
             "type": "connection_established",
             "session_id": session_id,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(UTC).isoformat()
         })
     
     async def disconnect(self, websocket: WebSocket):
@@ -109,7 +109,7 @@ class ConnectionManager:
             "type": "training_progress",
             "run_id": run_id,
             "data": progress_data,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(UTC).isoformat()
         }
         
         # Cache the progress
@@ -138,7 +138,7 @@ class ConnectionManager:
             "type": "training_complete",
             "run_id": run_id,
             "data": results,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(UTC).isoformat()
         }
         
         await self._broadcast_to_run(run_id, message)
@@ -149,7 +149,7 @@ class ConnectionManager:
             "type": "training_error",
             "run_id": run_id,
             "data": {"error": error_message},
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(UTC).isoformat()
         }
         
         await self._broadcast_to_run(run_id, message)
@@ -160,7 +160,7 @@ class ConnectionManager:
             "type": "fold_complete",
             "run_id": run_id,
             "data": fold_data,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(UTC).isoformat()
         }
         
         await self._broadcast_to_run(run_id, message)
@@ -171,7 +171,7 @@ class ConnectionManager:
             "type": "optimization_progress",
             "run_id": run_id,
             "data": optimization_data,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(UTC).isoformat()
         }
         
         await self._broadcast_to_run(run_id, message)
@@ -212,7 +212,7 @@ class ConnectionManager:
                     "type": "training_progress",
                     "run_id": run_id,
                     "data": cached_progress,
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(UTC).isoformat(),
                     "cached": True
                 }
                 await self._send_to_websocket(websocket, message)

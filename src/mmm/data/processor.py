@@ -103,10 +103,10 @@ class DataProcessor:
         total_spend = df[spend_columns].sum().sum()
         
         for channel in spend_columns:
-            channel_spend = df[channel].sum()
+            channel_spend = float(df[channel].sum())
             channel_type = self._classify_channel_type(channel)
-            days_active = (df[channel] > 0).sum()
-            spend_share = channel_spend / total_spend if total_spend > 0 else 0
+            days_active = int((df[channel] > 0).sum())
+            spend_share = float(channel_spend / total_spend) if total_spend > 0 else 0.0
             
             channel_info[channel] = ChannelInfo(
                 name=channel,
@@ -140,7 +140,7 @@ class DataProcessor:
             df[col] = df[col].fillna(0)
         
         # For profit, forward fill then backward fill
-        df["profit"] = df["profit"].fillna(method="ffill").fillna(method="bfill")
+        df["profit"] = df["profit"].ffill().bfill()
         
         # For optional control variables, fill with 0
         for col in ["is_holiday", "promo_flag", "site_outage"]:

@@ -110,6 +110,16 @@ class DataValidator:
         # Check spend columns for negative values and jumps
         spend_columns = [col for col in df.columns if col not in ["date", "profit", "is_holiday", "promo_flag", "site_outage"]]
         
+        # Check for zero spend across all channels
+        if spend_columns:
+            all_zero_spend = all(df[col].sum() == 0 for col in spend_columns if col in df.columns)
+            if all_zero_spend:
+                errors.append(ValidationError(
+                    code=ValidationErrorCode.WARNING_001,
+                    message="Zero spend across all channels",
+                    severity="warning"
+                ))
+        
         for col in spend_columns:
             if col in df.columns:
                 # Check for negative spend
@@ -121,12 +131,13 @@ class DataValidator:
                         column=col
                     ))
                 
-                # Check for spend jumps >300%
-                df_sorted = df.sort_values("date")
-                daily_changes = df_sorted[col].pct_change()
-                large_jumps = daily_changes[daily_changes > 3.0].index.tolist()
-                if large_jumps:
-                    errors.append(ValidationError(
+                # Check for spend jumps >300% (only if date column exists)
+                if "date" in df.columns:
+                    df_sorted = df.sort_values("date")
+                    daily_changes = df_sorted[col].pct_change()
+                    large_jumps = daily_changes[daily_changes > 3.0].index.tolist()
+                    if large_jumps:
+                        errors.append(ValidationError(
                         code=ValidationErrorCode.ERROR_003,
                         message=f"Day-over-day spend jump >300% detected in {col}",
                         column=col
@@ -138,14 +149,18 @@ class DataValidator:
         """Generates data summary including business tier classification."""
         spend_columns = [col for col in df.columns if col not in ["date", "profit", "is_holiday", "promo_flag", "site_outage"]]
         
-        total_days = len(df)
-        total_profit = df["profit"].sum() if "profit" in df.columns else 0
-        total_annual_spend = df[spend_columns].sum().sum() if spend_columns else 0
-        channel_count = len(spend_columns)
+        total_days = int(len(df))
+        total_profit = float(df["profit"].sum()) if "profit" in df.columns else 0.0
+        total_annual_spend = float(df[spend_columns].sum().sum()) if spend_columns else 0.0
+        channel_count = int(len(spend_columns))
         
         if "date" in df.columns:
-            date_col = pd.to_datetime(df["date"])
-            date_range = (date_col.min(), date_col.max())
+            try:
+                date_col = pd.to_datetime(df["date"], errors='coerce')
+                date_range = (date_col.min(), date_col.max())
+            except Exception:
+                # Fallback for malformed dates
+                date_range = (datetime.now(), datetime.now())
         else:
             date_range = (datetime.now(), datetime.now())
         
@@ -188,17 +203,21 @@ class DataValidator:
     
     def _calculate_quality_score(self, df: pd.DataFrame) -> float:
         """Calculates data quality score (0-100)."""
+        # Handle empty dataframe
+        if df.empty or len(df.columns) == 0:
+            return 0.0
+        
         score = 100.0
         
         # Deduct for missing values
-        missing_pct = df.isnull().sum().sum() / (len(df) * len(df.columns))
+        missing_pct = float(df.isnull().sum().sum()) / (len(df) * len(df.columns))
         score -= missing_pct * 50
         
         # Deduct for negative values in spend columns
         spend_columns = [col for col in df.columns if col not in ["date", "profit", "is_holiday", "promo_flag", "site_outage"]]
         for col in spend_columns:
             if col in df.columns:
-                negative_pct = (df[col] < 0).sum() / len(df)
+                negative_pct = float((df[col] < 0).sum()) / len(df)
                 score -= negative_pct * 30
         
-        return max(0.0, score)
+        return float(max(0.0, score))

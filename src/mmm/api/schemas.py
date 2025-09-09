@@ -3,7 +3,7 @@ Pydantic schemas for API request/response validation.
 """
 from pydantic import BaseModel, Field, validator
 from typing import Dict, List, Optional, Union, Any
-from datetime import datetime
+from datetime import datetime, UTC
 from enum import Enum
 
 
@@ -218,7 +218,7 @@ class ErrorResponseSchema(BaseModel):
 class WebSocketMessageSchema(BaseModel):
     type: str = Field(..., description="Message type")
     data: Dict[str, Any] = Field(..., description="Message data")
-    timestamp: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
+    timestamp: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
 
 
 class TrainingProgressMessageSchema(WebSocketMessageSchema):

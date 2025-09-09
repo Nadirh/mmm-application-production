@@ -12,7 +12,7 @@ import asyncio
 import json
 import tempfile
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from typing import Dict, Any, List
 import pandas as pd
 import numpy as np
@@ -23,9 +23,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from mmm.api.main import app
 from mmm.api.websocket import connection_manager
 from mmm.database.models import UploadSession, TrainingRun, OptimizationRun
-from mmm.core.cache import cache_manager
+from mmm.utils.cache import cache_manager
 from mmm.model.mmm_model import MMMModel
-from mmm.optimization.budget_optimizer import BudgetOptimizer
+from mmm.optimization.optimizer import BudgetOptimizer
 
 
 class IntegrationTestClient:
@@ -39,7 +39,7 @@ class IntegrationTestClient:
         """Upload CSV data and return response."""
         with open(csv_file_path, 'rb') as f:
             response = self.client.post(
-                "/api/v1/upload",
+                "/api/data/upload",
                 files={"file": ("test_data.csv", f, "text/csv")},
                 data={"business_tier": business_tier}
             )
@@ -48,21 +48,26 @@ class IntegrationTestClient:
     def start_training(self, upload_id: str, config: Dict[str, Any]) -> Dict[str, Any]:
         """Start model training and return response."""
         response = self.client.post(
-            f"/api/v1/training/{upload_id}/start",
+            f"/api/model/train?upload_id={upload_id}",
             json=config
         )
         return response.json()
     
     def get_training_status(self, run_id: str) -> Dict[str, Any]:
         """Get training run status."""
-        response = self.client.get(f"/api/v1/training/status/{run_id}")
+        response = self.client.get(f"/api/model/training/progress/{run_id}")
         return response.json()
     
     def start_optimization(self, run_id: str, optimization_config: Dict[str, Any]) -> Dict[str, Any]:
         """Start budget optimization."""
+        # Add run_id to the request body
+        request_body = {
+            "run_id": run_id,
+            **optimization_config
+        }
         response = self.client.post(
-            f"/api/v1/optimization/{run_id}/start",
-            json=optimization_config
+            "/api/optimization/run",
+            json=request_body
         )
         return response.json()
     
@@ -75,7 +80,7 @@ class IntegrationTestClient:
                     try:
                         data = websocket.receive_json()
                         self.websocket_messages.append({
-                            "timestamp": datetime.utcnow().isoformat(),
+                            "timestamp": datetime.now(UTC).isoformat(),
                             "data": data
                         })
                     except Exception:
@@ -216,14 +221,13 @@ class TestCompleteWorkflow:
         }
         
         optimization_response = integration_client.start_optimization(run_id, optimization_config)
-        assert optimization_response["status"] == "started"
-        optimization_id = optimization_response["optimization_id"]
+        assert optimization_response["run_id"] == run_id
+        assert "optimization_results" in optimization_response
         
-        # Verify optimization run creation
-        async with test_db() as session:
-            optimization_run = await session.get(OptimizationRun, optimization_id)
-            assert optimization_run is not None
-            assert optimization_run.training_run_id == run_id
+        # Verify optimization results
+        optimization_results = optimization_response["optimization_results"]
+        assert "optimal_spend" in optimization_results
+        assert "profit_uplift" in optimization_results
     
     async def test_websocket_integration(self, integration_client, test_db, uploaded_session):
         """Test WebSocket integration during training."""
@@ -359,11 +363,11 @@ class TestPerformanceIntegration:
     
     async def test_large_dataset_performance(self, integration_client, large_dataset_file):
         """Test performance with large datasets."""
-        start_time = datetime.utcnow()
+        start_time = datetime.now(UTC)
         
         # Upload large dataset
         upload_response = integration_client.upload_data(large_dataset_file)
-        upload_time = (datetime.utcnow() - start_time).total_seconds()
+        upload_time = (datetime.now(UTC) - start_time).total_seconds()
         
         assert upload_response["status"] == "success"
         assert upload_time < 30  # Upload should complete within 30 seconds

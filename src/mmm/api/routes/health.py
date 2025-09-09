@@ -4,7 +4,7 @@ Health check endpoints.
 from fastapi import APIRouter
 from typing import Dict, Any
 import time
-from datetime import datetime
+from datetime import datetime, UTC
 
 from mmm.config.settings import settings
 
@@ -16,7 +16,7 @@ async def health_check() -> Dict[str, Any]:
     """Basic health check endpoint."""
     return {
         "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "environment": settings.env.value,
         "version": "1.0.0"
     }
@@ -30,7 +30,7 @@ async def detailed_health_check() -> Dict[str, Any]:
     
     return {
         "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "environment": settings.env.value,
         "version": "1.0.0",
         "system": {

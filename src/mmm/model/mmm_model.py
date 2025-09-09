@@ -102,7 +102,7 @@ class MMMModel:
         )
         
         # Calculate diagnostics
-        diagnostics = self._calculate_diagnostics(y, fitted_values, residuals, df, spend_columns)
+        diagnostics = self._calculate_diagnostics(y, fitted_values, residuals, df, spend_columns, final_params)
         
         # Store results
         self.results = ModelResults(
@@ -303,16 +303,16 @@ class MMMModel:
                          params: Dict[str, Dict[str, float]]) -> np.ndarray:
         """Applies adstock and saturation transforms to spend data."""
         n_days, n_channels = X_spend.shape
-        X_transformed = np.zeros_like(X_spend)
+        X_transformed = np.zeros_like(X_spend, dtype=np.float64)
         
         for i, channel in enumerate(spend_columns):
             beta = params["channel_betas"][channel]
             r = params["channel_rs"][channel]
             
             # Apply adstock transformation
-            adstocked = np.zeros(n_days)
+            adstocked = np.zeros(n_days, dtype=np.float64)
             for t in range(n_days):
-                adstocked[t] = X_spend[t, i] + (r * adstocked[t-1] if t > 0 else 0)
+                adstocked[t] = float(X_spend[t, i]) + (r * adstocked[t-1] if t > 0 else 0.0)
             
             # Apply saturation transformation (power law)
             X_transformed[:, i] = np.power(adstocked, beta)
@@ -402,7 +402,8 @@ class MMMModel:
                              fitted_values: np.ndarray,
                              residuals: np.ndarray,
                              df: pd.DataFrame,
-                             spend_columns: List[str]) -> Dict[str, Any]:
+                             spend_columns: List[str],
+                             params: ModelParameters) -> Dict[str, Any]:
         """Calculates model diagnostics and validation metrics."""
         diagnostics = {}
         
@@ -412,16 +413,16 @@ class MMMModel:
         diagnostics["residual_std"] = np.std(residuals)
         
         # Media attribution percentage
-        baseline_contribution = self.results.parameters.alpha_baseline * len(y) + \
-                              self.results.parameters.alpha_trend * np.sum(df["days_since_start"])
+        baseline_contribution = params.alpha_baseline * len(y) + \
+                              params.alpha_trend * np.sum(df["days_since_start"])
         total_profit = np.sum(y)
         media_attribution_pct = (total_profit - baseline_contribution) / total_profit * 100
         diagnostics["media_attribution_percentage"] = media_attribution_pct
         
         # Channel attribution breakdown
         transform_params = {
-            "channel_betas": self.results.parameters.channel_betas,
-            "channel_rs": self.results.parameters.channel_rs
+            "channel_betas": params.channel_betas,
+            "channel_rs": params.channel_rs
         }
         X_transformed = self._apply_transforms(
             df[spend_columns].values, spend_columns, transform_params
@@ -429,7 +430,7 @@ class MMMModel:
         
         channel_attributions = {}
         for i, channel in enumerate(spend_columns):
-            contribution = self.results.parameters.channel_alphas[channel] * X_transformed[:, i]
+            contribution = params.channel_alphas[channel] * X_transformed[:, i]
             channel_attributions[channel] = np.sum(contribution)
         
         diagnostics["channel_attributions"] = channel_attributions

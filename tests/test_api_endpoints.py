@@ -124,7 +124,7 @@ class TestDataUploadEndpoints:
         large_file = tmp_path / "large.csv"
         
         # Mock the file size check
-        with patch('mmm.api.routes.data.settings.api.max_upload_size', 1024):  # 1KB limit
+        with patch('mmm.config.settings.settings.api.max_upload_size', 1024):  # 1KB limit
             with open(large_file, 'w') as f:
                 f.write("date,profit,spend\n" * 1000)  # Create large file
             
@@ -136,17 +136,16 @@ class TestDataUploadEndpoints:
             
             assert response.status_code == status.HTTP_413_REQUEST_ENTITY_TOO_LARGE
     
-    @pytest.mark.asyncio
-    async def test_get_upload_summary(self, client, uploaded_session):
+    def test_get_upload_summary(self, client, mock_upload_session):
         """Test getting upload summary."""
-        response = client.get(f"/api/data/upload/{uploaded_session.id}/summary")
+        response = client.get(f"/api/data/upload/{mock_upload_session.id}/summary")
         
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
         
-        assert data["upload_id"] == uploaded_session.id
-        assert data["filename"] == uploaded_session.filename
-        assert data["status"] == uploaded_session.status
+        assert data["upload_id"] == mock_upload_session.id
+        assert data["filename"] == mock_upload_session.filename
+        assert data["status"] == mock_upload_session.status
         assert "data_summary" in data
     
     def test_get_upload_summary_not_found(self, client):
@@ -155,39 +154,36 @@ class TestDataUploadEndpoints:
         
         assert response.status_code == status.HTTP_404_NOT_FOUND
     
-    @pytest.mark.asyncio
-    async def test_get_channel_info(self, client, uploaded_session):
+    def test_get_channel_info(self, client, mock_upload_session):
         """Test getting channel information."""
-        response = client.get(f"/api/data/upload/{uploaded_session.id}/channels")
+        response = client.get(f"/api/data/upload/{mock_upload_session.id}/channels")
         
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
         
-        assert data["upload_id"] == uploaded_session.id
+        assert data["upload_id"] == mock_upload_session.id
         assert "channels" in data
         assert len(data["channels"]) > 0
     
-    @pytest.mark.asyncio
-    async def test_get_validation_results(self, client, uploaded_session):
+    def test_get_validation_results(self, client, mock_upload_session):
         """Test getting validation results."""
-        response = client.get(f"/api/data/upload/{uploaded_session.id}/validation")
+        response = client.get(f"/api/data/upload/{mock_upload_session.id}/validation")
         
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
         
-        assert data["upload_id"] == uploaded_session.id
+        assert data["upload_id"] == mock_upload_session.id
         assert "validation_errors" in data
     
-    @pytest.mark.asyncio
-    async def test_delete_upload(self, client, uploaded_session):
+    def test_delete_upload(self, client, mock_upload_session):
         """Test deleting an upload session."""
-        response = client.delete(f"/api/data/upload/{uploaded_session.id}")
+        response = client.delete(f"/api/data/upload/{mock_upload_session.id}")
         
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
         
         assert data["status"] == "deleted"
-        assert data["upload_id"] == uploaded_session.id
+        assert data["upload_id"] == mock_upload_session.id
 
 
 class TestModelTrainingEndpoints:

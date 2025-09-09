@@ -1,7 +1,7 @@
 """
 SQLAlchemy database models for MMM application.
 """
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Dict, Any, Optional
 from sqlalchemy import Column, Integer, String, Float, DateTime, Text, JSON, Boolean, ForeignKey
 from sqlalchemy.orm import relationship
@@ -16,7 +16,7 @@ class UploadSession(Base):
     
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     filename = Column(String, nullable=False)
-    upload_time = Column(DateTime, default=datetime.utcnow)
+    upload_time = Column(DateTime, default=lambda: datetime.now(UTC))
     file_path = Column(String, nullable=False)
     
     # Data summary
@@ -71,7 +71,7 @@ class TrainingRun(Base):
     upload_session_id = Column(String, ForeignKey("upload_sessions.id"), nullable=False)
     
     # Training metadata
-    start_time = Column(DateTime, default=datetime.utcnow)
+    start_time = Column(DateTime, default=lambda: datetime.now(UTC))
     completion_time = Column(DateTime)
     status = Column(String, default="queued")  # queued, training, completed, failed
     
@@ -118,7 +118,7 @@ class OptimizationRun(Base):
     training_run_id = Column(String, ForeignKey("training_runs.id"), nullable=False)
     
     # Optimization metadata
-    created_time = Column(DateTime, default=datetime.utcnow)
+    created_time = Column(DateTime, default=lambda: datetime.now(UTC))
     
     # Optimization inputs
     total_budget = Column(Float, nullable=False)
@@ -212,7 +212,7 @@ class CachedResponseCurve(Base):
     channel_name = Column(String, nullable=False)
     
     # Cache metadata
-    created_time = Column(DateTime, default=datetime.utcnow)
+    created_time = Column(DateTime, default=lambda: datetime.now(UTC))
     cache_key = Column(String, nullable=False, unique=True)
     
     # Response curve data

@@ -5,7 +5,7 @@ import asyncio
 from typing import AsyncGenerator, Optional
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
-import aioredis
+import redis.asyncio as redis
 import structlog
 
 from mmm.config.settings import settings
@@ -57,7 +57,7 @@ class DatabaseManager:
         """Setup Redis connection pool."""
         try:
             redis_url = getattr(settings.database, 'redis_url', 'redis://localhost:6379/0')
-            self.redis_pool = await aioredis.from_url(
+            self.redis_pool = redis.from_url(
                 redis_url,
                 encoding="utf-8",
                 decode_responses=True,
@@ -86,7 +86,7 @@ class DatabaseManager:
             finally:
                 await session.close()
     
-    async def get_redis(self) -> Optional[aioredis.Redis]:
+    async def get_redis(self) -> Optional[redis.Redis]:
         """Get Redis connection."""
         if not self.redis_pool:
             await self._setup_redis()
@@ -98,7 +98,7 @@ class DatabaseManager:
             await self.engine.dispose()
             
         if self.redis_pool:
-            await self.redis_pool.close()
+            await self.redis_pool.aclose()
         
         logger.info("Database connections closed")
 
@@ -113,6 +113,6 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
         yield session
 
 
-async def get_redis() -> Optional[aioredis.Redis]:
+async def get_redis() -> Optional[redis.Redis]:
     """Dependency for getting Redis connection."""
     return await db_manager.get_redis()

@@ -9,6 +9,11 @@ from fastapi.staticfiles import StaticFiles
 import structlog
 import traceback
 import time
+import json
+import numpy as np
+from datetime import datetime
+from fastapi.encoders import jsonable_encoder
+from contextlib import asynccontextmanager
 
 from mmm.config.settings import settings
 from mmm.api.routes import data, model, optimization, health, websocket
@@ -34,11 +39,60 @@ structlog.configure(
 logger = structlog.get_logger()
 
 
+class NumpyEncoder(json.JSONEncoder):
+    """Custom JSON encoder that handles numpy types."""
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif isinstance(obj, datetime):
+            return obj.isoformat()
+        return super().default(obj)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan handler."""
+    # Startup
+    logger.info("Starting MMM API server", environment=settings.env.value)
+    
+    # Create necessary directories
+    settings.setup_directories()
+    
+    # Initialize database connections
+    from mmm.database.connection import db_manager
+    from mmm.utils.cache import cache_manager
+    
+    await db_manager.initialize()
+    
+    # Initialize cache with Redis
+    redis_client = await db_manager.get_redis()
+    await cache_manager.initialize(redis_client)
+    
+    logger.info("MMM API server started successfully")
+    
+    yield
+    
+    # Shutdown
+    logger.info("Shutting down MMM API server")
+    
+    try:
+        await cache_manager.close()
+        await db_manager.close()
+        logger.info("MMM API server shutdown completed")
+    except Exception as e:
+        logger.error("Error during shutdown", error=str(e))
+
+
 # Create FastAPI application
 app = FastAPI(
     title="Media Mix Modeling API",
     description="API for Media Mix Modeling application to optimize marketing budget allocation",
     version="1.0.0",
+    lifespan=lifespan,
     docs_url="/docs" if settings.is_development() else None,
     redoc_url="/redoc" if settings.is_development() else None,
 )
@@ -104,36 +158,6 @@ async def global_exception_handler(request: Request, exc: Exception):
             }
         )
 
-
-@app.on_event("startup")
-async def startup_event():
-    """Application startup tasks."""
-    logger.info("Starting MMM API server", environment=settings.env.value)
-    
-    # Create necessary directories
-    settings.setup_directories()
-    
-    # Initialize database connections
-    from mmm.database.connection import db_manager
-    from mmm.utils.cache import cache_manager
-    
-    await db_manager.initialize()
-    
-    # Initialize cache with Redis
-    redis_client = await db_manager.get_redis()
-    await cache_manager.initialize(redis_client)
-    
-    logger.info("MMM API server started successfully")
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Application shutdown tasks."""
-    logger.info("Shutting down MMM API server")
-    
-    # Close database connections
-    from mmm.database.connection import db_manager
-    await db_manager.close()
 
 
 # Include routers

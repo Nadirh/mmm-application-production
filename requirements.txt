@@ -18,8 +18,8 @@ aiofiles>=23.0.0
 # Database and caching
 sqlalchemy>=2.0.0
 alembic>=1.12.0
+aiosqlite>=0.19.0
 redis>=5.0.0
-aioredis>=2.0.0
 
 # Configuration and logging
 python-dotenv>=1.0.0

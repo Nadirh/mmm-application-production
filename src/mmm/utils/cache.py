@@ -5,7 +5,7 @@ import json
 import hashlib
 from typing import Any, Optional, Dict, List
 import structlog
-import aioredis
+import redis.asyncio as redis
 
 from mmm.config.settings import settings
 
@@ -19,7 +19,7 @@ class CacheManager:
         self.redis_client = None
         self.memory_cache: Dict[str, Any] = {}
         
-    async def initialize(self, redis_client: Optional[aioredis.Redis] = None):
+    async def initialize(self, redis_client: Optional[redis.Redis] = None):
         """Initialize cache manager with Redis client."""
         self.redis_client = redis_client
         if self.redis_client:

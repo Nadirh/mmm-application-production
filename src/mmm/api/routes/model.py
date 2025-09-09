@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, BackgroundTasks
 from typing import Dict, Any, Optional
 import uuid
 import asyncio
-from datetime import datetime
+from datetime import datetime, UTC
 import structlog
 
 from mmm.model.mmm_model import MMMModel
@@ -69,7 +69,7 @@ async def train_model_background(upload_id: str, run_id: str, config: Dict[str, 
             "status": "completed",
             "results": results,
             "model": model,
-            "completion_time": datetime.utcnow(),
+            "completion_time": datetime.now(UTC),
         })
         
         # Cache model results
@@ -110,7 +110,7 @@ async def train_model_background(upload_id: str, run_id: str, config: Dict[str, 
         training_runs[run_id].update({
             "status": "failed",
             "error": str(e),
-            "completion_time": datetime.utcnow(),
+            "completion_time": datetime.now(UTC),
         })
         
         # Broadcast training error
@@ -146,7 +146,7 @@ async def train_model(
     training_runs[run_id] = {
         "upload_id": upload_id,
         "run_id": run_id,
-        "start_time": datetime.utcnow(),
+        "start_time": datetime.now(UTC),
         "status": "queued",
         "config": config,
         "progress": {"type": "queued"}

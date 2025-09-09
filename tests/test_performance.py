@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from mmm.api.main import app
 from mmm.api.websocket import connection_manager
 from mmm.model.mmm_model import MMMModel
-from mmm.optimization.budget_optimizer import BudgetOptimizer
+from mmm.optimization.optimizer import BudgetOptimizer
 
 
 @dataclass

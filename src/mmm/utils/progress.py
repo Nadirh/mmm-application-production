@@ -3,7 +3,7 @@ Progress tracking utilities for model training with WebSocket broadcasting.
 """
 import asyncio
 from typing import Dict, Any, Optional, Callable
-from datetime import datetime
+from datetime import datetime, UTC
 import structlog
 
 logger = structlog.get_logger()
@@ -15,7 +15,7 @@ class TrainingProgressTracker:
     def __init__(self, run_id: str, websocket_manager=None):
         self.run_id = run_id
         self.websocket_manager = websocket_manager
-        self.start_time = datetime.utcnow()
+        self.start_time = datetime.now(UTC)
         self.current_fold = 0
         self.total_folds = 0
         self.current_step = ""
@@ -23,7 +23,7 @@ class TrainingProgressTracker:
         
     async def update_progress(self, progress_type: str, data: Dict[str, Any]):
         """Update progress and broadcast via WebSocket."""
-        timestamp = datetime.utcnow()
+        timestamp = datetime.now(UTC)
         
         # Update internal state
         if progress_type == "training_started":
@@ -36,6 +36,7 @@ class TrainingProgressTracker:
             
         elif progress_type == "fold_complete":
             fold_num = data.get("fold", 0)
+            self.current_fold = fold_num
             mape = data.get("mape", 0)
             self.current_step = f"Fold {fold_num} complete (MAPE: {mape:.2f}%)"
             

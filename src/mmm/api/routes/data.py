@@ -1,18 +1,21 @@
 """
 Data upload and validation endpoints.
 """
-from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks
+from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks, Depends
 from fastapi.responses import JSONResponse
 from typing import Dict, Any, List
 import pandas as pd
 import uuid
 import os
-from datetime import datetime
+from datetime import datetime, UTC
 import structlog
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from mmm.data.validator import DataValidator, ValidationError
 from mmm.data.processor import DataProcessor
 from mmm.config.settings import settings
+from mmm.database.connection import get_db
+from mmm.database.models import UploadSession
 
 router = APIRouter()
 logger = structlog.get_logger()
@@ -23,7 +26,7 @@ upload_sessions: Dict[str, Dict[str, Any]] = {}
 
 
 @router.post("/upload")
-async def upload_data(file: UploadFile = File(...)) -> Dict[str, Any]:
+async def upload_data(file: UploadFile = File(...), db: AsyncSession = Depends(get_db)) -> Dict[str, Any]:
     """
     Upload and validate CSV data file.
     
@@ -69,7 +72,7 @@ async def upload_data(file: UploadFile = File(...)) -> Dict[str, Any]:
         # Store session data
         upload_sessions[upload_id] = {
             "filename": file.filename,
-            "upload_time": datetime.utcnow(),
+            "upload_time": datetime.now(UTC),
             "file_path": upload_path,
             "data_summary": data_summary,
             "validation_errors": validation_errors,
@@ -77,6 +80,41 @@ async def upload_data(file: UploadFile = File(...)) -> Dict[str, Any]:
             "processed_df": processed_df,
             "status": "validated"
         }
+        
+        # Save to database
+        db_upload_session = UploadSession(
+            id=upload_id,
+            filename=file.filename,
+            file_path=upload_path,
+            total_days=data_summary.total_days,
+            total_profit=data_summary.total_profit,
+            total_annual_spend=data_summary.total_annual_spend,
+            channel_count=data_summary.channel_count,
+            date_range_start=data_summary.date_range[0],
+            date_range_end=data_summary.date_range[1],
+            business_tier=data_summary.business_tier.value,
+            data_quality_score=data_summary.data_quality_score,
+            validation_errors=[{
+                "code": error.code.name,
+                "message": error.message,
+                "column": error.column,
+                "row": error.row,
+                "severity": error.severity
+            } for error in validation_errors],
+            channel_info={
+                name: {
+                    "type": info.type.value,
+                    "total_spend": info.total_spend,
+                    "spend_share": info.spend_share,
+                    "days_active": info.days_active
+                }
+                for name, info in channel_info.items()
+            },
+            status="validated"
+        )
+        db.add(db_upload_session)
+        await db.commit()
+        await db.refresh(db_upload_session)
         
         logger.info(
             "Data upload completed",
@@ -88,6 +126,7 @@ async def upload_data(file: UploadFile = File(...)) -> Dict[str, Any]:
         )
         
         return {
+            "status": "success",
             "upload_id": upload_id,
             "data_summary": {
                 "total_days": data_summary.total_days,
@@ -122,6 +161,9 @@ async def upload_data(file: UploadFile = File(...)) -> Dict[str, Any]:
             }
         }
         
+    except HTTPException:
+        # Re-raise HTTP exceptions (like 413 file too large) as-is
+        raise
     except Exception as e:
         logger.error("Data upload failed", upload_id=upload_id, error=str(e))
         

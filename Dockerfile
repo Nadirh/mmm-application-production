@@ -43,8 +43,12 @@ RUN pip install -r requirements-dev.txt
 # Copy source code
 COPY . .
 
-# Change ownership to app user
-RUN chown -R mmm:mmm /app
+# Install the package in editable mode
+RUN pip install -e .
+
+# Create necessary directories with proper permissions
+RUN mkdir -p /app/logs /app/static/uploads /app/data && \
+    chown -R mmm:mmm /app
 
 # Switch to app user
 USER mmm
