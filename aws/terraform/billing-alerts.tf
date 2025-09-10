@@ -57,51 +57,51 @@ resource "aws_cloudwatch_metric_alarm" "billing" {
   }
 }
 
-# Budget for cost control
-resource "aws_budgets_budget" "mmm_monthly" {
-  name         = "mmm-monthly-budget-${var.environment}"
-  budget_type  = "COST"
-  limit_amount = "300"  # $300 monthly limit
-  limit_unit   = "USD"
-  time_unit    = "MONTHLY"
-  
-  cost_filter {
-    name   = "Service"
-    values = [
-      "Amazon Elastic Container Service",
-      "Amazon Relational Database Service", 
-      "Amazon ElastiCache",
-      "Amazon Elastic Load Balancing",
-      "Amazon Simple Storage Service",
-      "Amazon CloudWatch",
-      "Amazon Virtual Private Cloud"
-    ]
-  }
-
-  notification {
-    comparison_operator        = "GREATER_THAN"
-    threshold                 = 80  # Alert at 80% of budget
-    threshold_type            = "PERCENTAGE"
-    notification_type         = "ACTUAL"
-    subscriber_email_addresses = var.billing_alert_email != "" ? [var.billing_alert_email] : []
-  }
-  
-  notification {
-    comparison_operator        = "GREATER_THAN"
-    threshold                 = 100  # Alert at 100% of budget
-    threshold_type            = "PERCENTAGE"
-    notification_type          = "ACTUAL"
-    subscriber_email_addresses = var.billing_alert_email != "" ? [var.billing_alert_email] : []
-  }
-  
-  notification {
-    comparison_operator        = "GREATER_THAN"
-    threshold                 = 90   # Forecast alert at 90%
-    threshold_type            = "PERCENTAGE"
-    notification_type          = "FORECASTED"
-    subscriber_email_addresses = var.billing_alert_email != "" ? [var.billing_alert_email] : []
-  }
-}
+# Budget for cost control - DISABLED (using billing-only.tf version instead)
+# resource "aws_budgets_budget" "mmm_monthly" {
+#   name         = "mmm-monthly-budget-${var.environment}"
+#   budget_type  = "COST"
+#   limit_amount = "300"  # $300 monthly limit
+#   limit_unit   = "USD"
+#   time_unit    = "MONTHLY"
+#   
+#   cost_filter {
+#     name   = "Service"
+#     values = [
+#       "Amazon Elastic Container Service",
+#       "Amazon Relational Database Service", 
+#       "Amazon ElastiCache",
+#       "Amazon Elastic Load Balancing",
+#       "Amazon Simple Storage Service",
+#       "Amazon CloudWatch",
+#       "Amazon Virtual Private Cloud"
+#     ]
+#   }
+# 
+#   notification {
+#     comparison_operator        = "GREATER_THAN"
+#     threshold                 = 80  # Alert at 80% of budget
+#     threshold_type            = "PERCENTAGE"
+#     notification_type         = "ACTUAL"
+#     subscriber_email_addresses = var.billing_alert_email != "" ? [var.billing_alert_email] : []
+#   }
+#   
+#   notification {
+#     comparison_operator        = "GREATER_THAN"
+#     threshold                 = 100  # Alert at 100% of budget
+#     threshold_type            = "PERCENTAGE"
+#     notification_type          = "ACTUAL"
+#     subscriber_email_addresses = var.billing_alert_email != "" ? [var.billing_alert_email] : []
+#   }
+#   
+#   notification {
+#     comparison_operator        = "GREATER_THAN"
+#     threshold                 = 90   # Forecast alert at 90%
+#     threshold_type            = "PERCENTAGE"
+#     notification_type          = "FORECASTED"
+#     subscriber_email_addresses = var.billing_alert_email != "" ? [var.billing_alert_email] : []
+#   }
+# }
 
 # Note: Cost Anomaly Detection requires AWS CLI or console setup
 # as it's not fully supported in this Terraform AWS provider version
@@ -112,7 +112,7 @@ output "billing_alerts_topic_arn" {
   value       = aws_sns_topic.billing_alerts.arn
 }
 
-output "budget_name" {
-  description = "Name of the AWS Budget"
-  value       = aws_budgets_budget.mmm_monthly.name
-}
+# output "budget_name" {
+#   description = "Name of the AWS Budget"
+#   value       = aws_budgets_budget.mmm_monthly.name
+# }

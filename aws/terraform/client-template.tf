@@ -84,7 +84,7 @@ resource "aws_db_instance" "client_db" {
   
   # Database configuration
   engine                 = "postgres"
-  engine_version         = "15.4"
+  engine_version         = "15.14"
   instance_class         = each.value.db_instance
   allocated_storage      = 20
   max_allocated_storage  = 100
@@ -146,10 +146,11 @@ resource "aws_ssm_parameter" "db_password" {
 resource "aws_lb_target_group" "client_app" {
   for_each = var.client_configs
   
-  name     = "mmm-${each.value.client_id}-${var.environment}"
-  port     = 8000
-  protocol = "HTTP"
-  vpc_id   = aws_vpc.main.id
+  name        = "mmm-${each.value.client_id}-${var.environment}"
+  port        = 8000
+  protocol    = "HTTP"
+  vpc_id      = aws_vpc.main.id
+  target_type = "ip"  # Required for Fargate tasks
   
   health_check {
     enabled             = true
@@ -242,7 +243,7 @@ resource "aws_ecs_task_definition" "client_app" {
         },
         {
           name  = "REDIS_URL"
-          value = "redis://${aws_elasticache_replication_group.redis.primary_endpoint_address}:6379"
+          value = "redis://${aws_elasticache_replication_group.redis.configuration_endpoint_address}:6379"
         }
       ]
       

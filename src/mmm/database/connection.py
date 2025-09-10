@@ -28,16 +28,18 @@ class DatabaseManager:
         
     async def initialize(self):
         """Initialize database connections."""
-        await self._setup_sqlite()
+        await self._setup_database()
         await self._setup_redis()
         
-    async def _setup_sqlite(self):
-        """Setup SQLite async engine."""
+    async def _setup_database(self):
+        """Setup database async engine."""
         database_url = settings.database.url
         
-        # Convert sqlite:// to sqlite+aiosqlite:// for async support
+        # Convert database URLs for async support
         if database_url.startswith("sqlite://"):
             database_url = database_url.replace("sqlite://", "sqlite+aiosqlite://")
+        elif database_url.startswith("postgresql://"):
+            database_url = database_url.replace("postgresql://", "postgresql+asyncpg://")
         
         self.engine = create_async_engine(
             database_url,
@@ -51,7 +53,7 @@ class DatabaseManager:
             expire_on_commit=False
         )
         
-        logger.info("SQLite database initialized", url=database_url)
+        logger.info("Database initialized", url=database_url)
         
     async def _setup_redis(self):
         """Setup Redis connection pool."""
@@ -61,11 +63,14 @@ class DatabaseManager:
                 redis_url,
                 encoding="utf-8",
                 decode_responses=True,
-                max_connections=20
+                max_connections=20,
+                socket_connect_timeout=5,  # 5 second connection timeout
+                socket_timeout=5,          # 5 second socket timeout
+                health_check_interval=30   # Health check every 30 seconds
             )
             
-            # Test connection
-            await self.redis_pool.ping()
+            # Test connection with timeout
+            await asyncio.wait_for(self.redis_pool.ping(), timeout=5.0)
             logger.info("Redis connection established", url=redis_url)
             
         except Exception as e:

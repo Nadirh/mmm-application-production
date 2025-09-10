@@ -6,7 +6,7 @@ aws_region  = "us-east-1"
 environment = "production"
 
 # Billing alerts configuration
-billing_alert_email = "nadirh@gmail.com"  # REQUIRED: Set your email for cost alerts
+billing_alert_email = "nadirh@gmail.com"
 billing_thresholds  = [100, 200, 500]           # Alert thresholds in USD
 
 # Network configuration (optional)

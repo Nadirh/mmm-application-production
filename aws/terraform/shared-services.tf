@@ -29,10 +29,11 @@ resource "aws_lb" "main" {
 
 # Default ALB Target Group (for health checks)
 resource "aws_lb_target_group" "default" {
-  name     = "mmm-default-${var.environment}"
-  port     = 8000
-  protocol = "HTTP"
-  vpc_id   = aws_vpc.main.id
+  name        = "mmm-default-${var.environment}"
+  port        = 8000
+  protocol    = "HTTP"
+  vpc_id      = aws_vpc.main.id
+  target_type = "ip"  # Required for Fargate tasks
   
   health_check {
     enabled             = true
