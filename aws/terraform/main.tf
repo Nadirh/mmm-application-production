@@ -7,12 +7,13 @@ terraform {
     }
   }
   
-  backend "s3" {
-    # Configure this with your S3 bucket for state storage
-    # bucket = "mmm-terraform-state"
-    # key    = "infrastructure/terraform.tfstate"
-    # region = "us-east-1"
-  }
+  # Using local backend for initial deployment
+  # Uncomment and configure S3 backend for production use:
+  # backend "s3" {
+  #   bucket = "mmm-terraform-state"
+  #   key    = "infrastructure/terraform.tfstate"
+  #   region = "us-east-2"
+  # }
 }
 
 provider "aws" {
@@ -31,7 +32,7 @@ provider "aws" {
 variable "aws_region" {
   description = "AWS region"
   type        = string
-  default     = "us-east-1"
+  default     = "us-east-2"
 }
 
 variable "environment" {

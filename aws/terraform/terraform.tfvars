@@ -2,7 +2,7 @@
 # Copy this to terraform.tfvars and update with your values
 
 # Basic configuration
-aws_region  = "us-east-1"
+aws_region  = "us-east-2"
 environment = "production"
 
 # Billing alerts configuration

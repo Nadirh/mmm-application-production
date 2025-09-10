@@ -142,6 +142,33 @@ resource "aws_ssm_parameter" "db_password" {
   }
 }
 
+# ALB Target Group for each client
+resource "aws_lb_target_group" "client_app" {
+  for_each = var.client_configs
+  
+  name     = "mmm-${each.value.client_id}-${var.environment}"
+  port     = 8000
+  protocol = "HTTP"
+  vpc_id   = aws_vpc.main.id
+  
+  health_check {
+    enabled             = true
+    healthy_threshold   = 2
+    interval            = 30
+    matcher             = "200"
+    path                = "/health"
+    port                = "traffic-port"
+    protocol            = "HTTP"
+    timeout             = 5
+    unhealthy_threshold = 2
+  }
+
+  tags = {
+    Name     = "mmm-${each.value.client_id}-tg-${var.environment}"
+    ClientId = each.value.client_id
+  }
+}
+
 # ECS Service for each client
 resource "aws_ecs_service" "client_app" {
   for_each = var.client_configs

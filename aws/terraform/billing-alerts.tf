@@ -65,8 +65,9 @@ resource "aws_budgets_budget" "mmm_monthly" {
   limit_unit   = "USD"
   time_unit    = "MONTHLY"
   
-  cost_filters = {
-    Service = [
+  cost_filter {
+    name   = "Service"
+    values = [
       "Amazon Elastic Container Service",
       "Amazon Relational Database Service", 
       "Amazon ElastiCache",
@@ -102,47 +103,8 @@ resource "aws_budgets_budget" "mmm_monthly" {
   }
 }
 
-# Cost Anomaly Detection
-resource "aws_ce_anomaly_detector" "mmm_service" {
-  name         = "mmm-anomaly-detector-${var.environment}"
-  monitor_type = "DIMENSIONAL"
-
-  specification = jsonencode({
-    Dimension = "SERVICE"
-    MatchOptions = ["EQUALS"]
-    Values = [
-      "Amazon Elastic Container Service",
-      "Amazon Relational Database Service",
-      "Amazon ElastiCache"
-    ]
-  })
-}
-
-resource "aws_ce_anomaly_subscription" "mmm_anomaly_email" {
-  count = var.billing_alert_email != "" ? 1 : 0
-  
-  name      = "mmm-anomaly-subscription-${var.environment}"
-  frequency = "DAILY"
-  
-  monitor_arn_list = [
-    aws_ce_anomaly_detector.mmm_service.arn
-  ]
-  
-  subscriber {
-    type    = "EMAIL"
-    address = var.billing_alert_email
-  }
-
-  threshold_expression {
-    and {
-      dimension {
-        key           = "ANOMALY_TOTAL_IMPACT_ABSOLUTE"
-        values        = ["50"]  # Alert on anomalies > $50
-        match_options = ["GREATER_THAN_OR_EQUAL"]
-      }
-    }
-  }
-}
+# Note: Cost Anomaly Detection requires AWS CLI or console setup
+# as it's not fully supported in this Terraform AWS provider version
 
 # Output the SNS topic ARN
 output "billing_alerts_topic_arn" {

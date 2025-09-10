@@ -2828,7 +2828,6 @@ api_timeout = config.get('api.target_response_times.optimization_run', 2000)
 
 Section 17: Error Handling & Recovery Procedures
 Comprehensive Error Handling Framework
-class MMModelingError(Exception):2
     """Base exception for MMM-specific errors"""
     def __init__(self, message, error_code=None, recovery_suggestions=None):
         super().__init__(message)

@@ -27,6 +27,46 @@ resource "aws_lb" "main" {
   }
 }
 
+# Default ALB Target Group (for health checks)
+resource "aws_lb_target_group" "default" {
+  name     = "mmm-default-${var.environment}"
+  port     = 8000
+  protocol = "HTTP"
+  vpc_id   = aws_vpc.main.id
+  
+  health_check {
+    enabled             = true
+    healthy_threshold   = 2
+    interval            = 30
+    matcher             = "200"
+    path                = "/health"
+    port                = "traffic-port"
+    protocol            = "HTTP"
+    timeout             = 5
+    unhealthy_threshold = 2
+  }
+
+  tags = {
+    Name = "mmm-default-tg-${var.environment}"
+  }
+}
+
+# ALB Listener
+resource "aws_lb_listener" "main" {
+  load_balancer_arn = aws_lb.main.arn
+  port              = "80"
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.default.arn
+  }
+
+  tags = {
+    Name = "mmm-alb-listener-${var.environment}"
+  }
+}
+
 # ECR Repository
 resource "aws_ecr_repository" "mmm_app" {
   name                 = "mmm-application"
@@ -36,37 +76,67 @@ resource "aws_ecr_repository" "mmm_app" {
     scan_on_push = true
   }
 
-  lifecycle_policy {
-    policy = jsonencode({
-      rules = [
-        {
-          rulePriority = 1
-          description  = "Keep last 30 production images"
-          selection = {
-            tagStatus     = "tagged"
-            tagPrefixList = ["v"]
-            countType     = "imageCountMoreThan"
-            countNumber   = 30
-          }
-          action = {
-            type = "expire"
-          }
-        },
-        {
-          rulePriority = 2
-          description  = "Keep last 10 untagged images"
-          selection = {
-            tagStatus   = "untagged"
-            countType   = "imageCountMoreThan"
-            countNumber = 10
-          }
-          action = {
-            type = "expire"
-          }
-        }
-      ]
-    })
+  tags = {
+    Name = "mmm-application-${var.environment}"
   }
+}
+
+# ECR lifecycle policy - separate resource
+resource "aws_ecr_lifecycle_policy" "mmm_app" {
+  repository = aws_ecr_repository.mmm_app.name
+
+  policy = jsonencode({
+    rules = [
+      {
+        rulePriority = 1
+        description  = "Keep last 30 production images"
+        selection = {
+          tagStatus     = "tagged"
+          tagPrefixList = ["v"]
+          countType     = "imageCountMoreThan"
+          countNumber   = 30
+        }
+        action = {
+          type = "expire"
+        }
+      },
+      {
+        rulePriority = 2
+        description  = "Keep last 10 untagged images"
+        selection = {
+          tagStatus   = "untagged"
+          countType   = "imageCountMoreThan"
+          countNumber = 10
+        }
+        action = {
+          type = "expire"
+        }
+      }
+    ]
+  })
+}
+
+# RDS Enhanced Monitoring Role
+resource "aws_iam_role" "rds_monitoring" {
+  name = "rds-monitoring-role-${var.environment}"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "monitoring.rds.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "rds_monitoring" {
+  role       = aws_iam_role.rds_monitoring.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole"
 }
 
 # Redis Cluster (shared across clients)
