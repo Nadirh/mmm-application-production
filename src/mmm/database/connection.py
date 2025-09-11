@@ -59,19 +59,62 @@ class DatabaseManager:
         """Setup Redis connection pool."""
         try:
             redis_url = getattr(settings.database, 'redis_url', 'redis://localhost:6379/0')
-            self.redis_pool = redis.from_url(
-                redis_url,
-                encoding="utf-8",
-                decode_responses=True,
-                max_connections=20,
-                socket_connect_timeout=5,  # 5 second connection timeout
-                socket_timeout=5,          # 5 second socket timeout
-                health_check_interval=30   # Health check every 30 seconds
-            )
             
-            # Test connection with timeout
-            await asyncio.wait_for(self.redis_pool.ping(), timeout=5.0)
-            logger.info("Redis connection established", url=redis_url)
+            # Check if this is a cluster configuration (rediss:// with cluster endpoint)
+            if 'clustercfg.' in redis_url or redis_url.startswith('rediss://'):
+                from redis.asyncio.cluster import RedisCluster
+                import ssl
+                
+                # Extract host and port from the URL
+                if redis_url.startswith('rediss://'):
+                    # Remove rediss:// prefix and extract host:port
+                    host_port = redis_url.replace('rediss://', '').split('/')[0]
+                    if ':' in host_port:
+                        host, port = host_port.split(':')
+                        port = int(port)
+                    else:
+                        host = host_port
+                        port = 6379
+                else:
+                    # Fallback parsing
+                    host, port = redis_url.split('/')[-1].split(':')
+                    port = int(port)
+                
+                # Setup SSL context for TLS
+                ssl_context = ssl.create_default_context()
+                ssl_context.check_hostname = False
+                ssl_context.verify_mode = ssl.CERT_NONE
+                
+                self.redis_pool = RedisCluster(
+                    host=host,
+                    port=port,
+                    encoding="utf-8",
+                    decode_responses=True,
+                    socket_connect_timeout=10,
+                    socket_timeout=10,
+                    ssl=ssl_context,
+                    health_check_interval=30
+                )
+                
+                # Test cluster connection with timeout
+                await asyncio.wait_for(self.redis_pool.ping(), timeout=10.0)
+                logger.info("Redis cluster connection established", url=redis_url)
+                
+            else:
+                # Standard Redis connection (non-cluster)
+                self.redis_pool = redis.from_url(
+                    redis_url,
+                    encoding="utf-8",
+                    decode_responses=True,
+                    max_connections=20,
+                    socket_connect_timeout=5,
+                    socket_timeout=5,
+                    health_check_interval=30
+                )
+                
+                # Test connection with timeout
+                await asyncio.wait_for(self.redis_pool.ping(), timeout=5.0)
+                logger.info("Redis connection established", url=redis_url)
             
         except Exception as e:
             logger.warning("Redis connection failed, using in-memory fallback", error=str(e))

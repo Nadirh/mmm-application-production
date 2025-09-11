@@ -241,16 +241,16 @@ resource "aws_ecs_task_definition" "client_app" {
           name  = "CLIENT_ID"
           value = each.value.client_id
         },
-        {
-          name  = "REDIS_URL"
-          value = "redis://${aws_elasticache_replication_group.redis.configuration_endpoint_address}:6379"
-        }
       ]
       
       secrets = [
         {
           name      = "DATABASE_URL"
           valueFrom = "/mmm/${each.value.client_id}/database/url"
+        },
+        {
+          name      = "REDIS_URL"
+          valueFrom = "/mmm-production/redis-endpoint"
         }
       ]
       
@@ -264,7 +264,7 @@ resource "aws_ecs_task_definition" "client_app" {
       }
       
       healthCheck = {
-        command = ["CMD-SHELL", "curl -f http://localhost:8000/ || exit 1"]
+        command = ["CMD-SHELL", "curl -f http://localhost:8000/api/health/ || exit 1"]
         interval = 30
         timeout = 5
         retries = 3

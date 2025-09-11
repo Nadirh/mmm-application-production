@@ -255,7 +255,10 @@ resource "aws_iam_role_policy" "ecs_task" {
           "ssm:GetParameters",
           "ssm:GetParametersByPath"
         ]
-        Resource = "arn:aws:ssm:*:*:parameter/mmm/*"
+        Resource = [
+          "arn:aws:ssm:*:*:parameter/mmm/*",
+          "arn:aws:ssm:*:*:parameter/mmm-production/*"
+        ]
       },
       {
         Effect = "Allow"
