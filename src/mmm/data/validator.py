@@ -97,14 +97,27 @@ class DataValidator:
         """Validates data quality according to business rules."""
         errors = []
         
+        # Convert numeric columns to proper data types first
+        df = self._convert_numeric_columns(df)
+        
         if "profit" in df.columns:
-            # Check for negative profit
-            negative_profit_rows = df[df["profit"] < 0].index.tolist()
-            if negative_profit_rows:
+            # Check for negative profit (only if numeric)
+            try:
+                profit_numeric = pd.to_numeric(df["profit"], errors='coerce')
+                if not profit_numeric.isna().all():
+                    negative_profit_rows = df[profit_numeric < 0].index.tolist()
+                    if negative_profit_rows:
+                        errors.append(ValidationError(
+                            code=ValidationErrorCode.ERROR_004,
+                            message=f"Negative profit detected in {len(negative_profit_rows)} rows",
+                            column="profit"
+                        ))
+            except Exception as e:
                 errors.append(ValidationError(
-                    code=ValidationErrorCode.ERROR_004,
-                    message=f"Negative profit detected in {len(negative_profit_rows)} rows",
-                    column="profit"
+                    code=ValidationErrorCode.WARNING_001,
+                    message=f"Could not validate profit column: non-numeric data detected",
+                    column="profit",
+                    severity="warning"
                 ))
         
         # Check spend columns for negative values and jumps
@@ -122,28 +135,59 @@ class DataValidator:
         
         for col in spend_columns:
             if col in df.columns:
-                # Check for negative spend
-                negative_spend_rows = df[df[col] < 0].index.tolist()
-                if negative_spend_rows:
-                    errors.append(ValidationError(
-                        code=ValidationErrorCode.ERROR_001,
-                        message=f"Negative spend detected in column {col}",
-                        column=col
-                    ))
+                try:
+                    # Check for negative spend (convert to numeric first)
+                    col_numeric = pd.to_numeric(df[col], errors='coerce')
+                    if not col_numeric.isna().all():
+                        negative_spend_rows = df[col_numeric < 0].index.tolist()
+                        if negative_spend_rows:
+                            errors.append(ValidationError(
+                                code=ValidationErrorCode.ERROR_001,
+                                message=f"Negative spend detected in column {col}",
+                                column=col
+                            ))
+                except Exception:
+                    # Skip validation for non-numeric columns
+                    continue
                 
                 # Check for spend jumps >300% (only if date column exists)
                 if "date" in df.columns:
-                    df_sorted = df.sort_values("date")
-                    daily_changes = df_sorted[col].pct_change()
-                    large_jumps = daily_changes[daily_changes > 3.0].index.tolist()
-                    if large_jumps:
-                        errors.append(ValidationError(
-                        code=ValidationErrorCode.ERROR_003,
-                        message=f"Day-over-day spend jump >300% detected in {col}",
-                        column=col
-                    ))
+                    try:
+                        col_numeric = pd.to_numeric(df[col], errors='coerce')
+                        if not col_numeric.isna().all():
+                            df_temp = df.copy()
+                            df_temp[col] = col_numeric
+                            df_sorted = df_temp.sort_values("date")
+                            daily_changes = df_sorted[col].pct_change()
+                            large_jumps = daily_changes[daily_changes > 3.0].index.tolist()
+                            if large_jumps:
+                                errors.append(ValidationError(
+                                    code=ValidationErrorCode.ERROR_003,
+                                    message=f"Day-over-day spend jump >300% detected in {col}",
+                                    column=col
+                                ))
+                    except Exception:
+                        # Skip jump validation for non-numeric columns
+                        continue
         
         return errors
+    
+    def _convert_numeric_columns(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Convert columns that should be numeric to proper data types."""
+        df_copy = df.copy()
+        
+        # Convert profit column if it exists
+        if "profit" in df_copy.columns:
+            df_copy["profit"] = pd.to_numeric(df_copy["profit"], errors='coerce')
+        
+        # Convert spend columns (exclude date and categorical columns)
+        exclude_cols = ["date", "profit", "is_holiday", "promo_flag", "site_outage"]
+        spend_columns = [col for col in df_copy.columns if col not in exclude_cols]
+        
+        for col in spend_columns:
+            df_copy[col] = pd.to_numeric(df_copy[col], errors='coerce')
+        
+        return df_copy
     
     def _generate_summary(self, df: pd.DataFrame) -> DataSummary:
         """Generates data summary including business tier classification."""
