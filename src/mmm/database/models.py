@@ -4,6 +4,7 @@ SQLAlchemy database models for MMM application.
 from datetime import datetime, UTC
 from typing import Dict, Any, Optional
 from sqlalchemy import Column, Integer, String, Float, DateTime, Text, JSON, Boolean, ForeignKey
+from sqlalchemy.dialects.postgresql import TIMESTAMP
 from sqlalchemy.orm import relationship
 import uuid
 
@@ -16,7 +17,7 @@ class UploadSession(Base):
     
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     filename = Column(String, nullable=False)
-    upload_time = Column(DateTime, default=lambda: datetime.now(UTC))
+    upload_time = Column(TIMESTAMP(timezone=True), default=lambda: datetime.now(UTC))
     file_path = Column(String, nullable=False)
     
     # Data summary
@@ -24,8 +25,8 @@ class UploadSession(Base):
     total_profit = Column(Float)
     total_annual_spend = Column(Float)
     channel_count = Column(Integer)
-    date_range_start = Column(DateTime)
-    date_range_end = Column(DateTime)
+    date_range_start = Column(TIMESTAMP(timezone=True))
+    date_range_end = Column(TIMESTAMP(timezone=True))
     business_tier = Column(String)
     data_quality_score = Column(Float)
     
@@ -71,8 +72,8 @@ class TrainingRun(Base):
     upload_session_id = Column(String, ForeignKey("upload_sessions.id"), nullable=False)
     
     # Training metadata
-    start_time = Column(DateTime, default=lambda: datetime.now(UTC))
-    completion_time = Column(DateTime)
+    start_time = Column(TIMESTAMP(timezone=True), default=lambda: datetime.now(UTC))
+    completion_time = Column(TIMESTAMP(timezone=True))
     status = Column(String, default="queued")  # queued, training, completed, failed
     
     # Training configuration
@@ -118,7 +119,7 @@ class OptimizationRun(Base):
     training_run_id = Column(String, ForeignKey("training_runs.id"), nullable=False)
     
     # Optimization metadata
-    created_time = Column(DateTime, default=lambda: datetime.now(UTC))
+    created_time = Column(TIMESTAMP(timezone=True), default=lambda: datetime.now(UTC))
     
     # Optimization inputs
     total_budget = Column(Float, nullable=False)
@@ -170,7 +171,7 @@ class DataPoint(Base):
     upload_session_id = Column(String, ForeignKey("upload_sessions.id"), nullable=False)
     
     # Time series data
-    date = Column(DateTime, nullable=False)
+    date = Column(TIMESTAMP(timezone=True), nullable=False)
     profit = Column(Float, nullable=False)
     
     # Channel spend data (stored as JSON for flexibility)
@@ -212,7 +213,7 @@ class CachedResponseCurve(Base):
     channel_name = Column(String, nullable=False)
     
     # Cache metadata
-    created_time = Column(DateTime, default=lambda: datetime.now(UTC))
+    created_time = Column(TIMESTAMP(timezone=True), default=lambda: datetime.now(UTC))
     cache_key = Column(String, nullable=False, unique=True)
     
     # Response curve data

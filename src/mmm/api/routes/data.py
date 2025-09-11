@@ -20,9 +20,86 @@ from mmm.database.models import UploadSession
 router = APIRouter()
 logger = structlog.get_logger()
 
-# In-memory storage for demo purposes
-# In production, use proper database or session management
+# Database storage for upload sessions
+# upload_sessions in-memory cache for backward compatibility with model training
 upload_sessions: Dict[str, Dict[str, Any]] = {}
+
+
+async def get_upload_session_from_db(upload_id: str, db: AsyncSession, include_processed_data: bool = True) -> Dict[str, Any]:
+    """Retrieve upload session from database and populate cache."""
+    from sqlalchemy import select
+    
+    # Check cache first
+    if upload_id in upload_sessions:
+        return upload_sessions[upload_id]
+    
+    # Retrieve from database
+    result = await db.execute(select(UploadSession).where(UploadSession.id == upload_id))
+    db_session = result.scalar_one_or_none()
+    
+    if db_session is None:
+        return None
+    
+    # Only process CSV data if needed (expensive operation)
+    try:
+        processed_df = None
+        channel_info = {}
+        
+        if include_processed_data:
+            # Load the CSV data and recreate processed_df
+            processed_df = pd.read_csv(db_session.file_path)
+            processor = DataProcessor()
+            processed_df, channel_info_obj = processor.process_data(processed_df)
+            
+            # Convert channel info objects to dict format expected by training
+            for name, info in channel_info_obj.items():
+                channel_info[name] = info
+        else:
+            # Use stored channel info from database
+            channel_info = db_session.channel_info or {}
+            
+        # Reconstruct data summary
+        from mmm.data.validator import DataSummary, BusinessTier
+        data_summary = DataSummary(
+            total_days=db_session.total_days,
+            total_profit=db_session.total_profit,
+            total_annual_spend=db_session.total_annual_spend,
+            channel_count=db_session.channel_count,
+            date_range=(db_session.date_range_start, db_session.date_range_end),
+            business_tier=BusinessTier(db_session.business_tier),
+            data_quality_score=db_session.data_quality_score
+        )
+        
+        # Create session data
+        session_data = {
+            "filename": db_session.filename,
+            "upload_time": db_session.upload_time,
+            "file_path": db_session.file_path,
+            "data_summary": data_summary,
+            "validation_errors": [
+                type('ValidationError', (), {
+                    'code': type('Code', (), {'name': err['code']})(),
+                    'message': err['message'],
+                    'column': err.get('column'),
+                    'row': err.get('row'),
+                    'severity': err['severity']
+                })() for err in (db_session.validation_errors or [])
+            ],
+            "channel_info": channel_info,
+            "status": db_session.status
+        }
+        
+        # Only add processed_df if it was loaded
+        if processed_df is not None:
+            session_data["processed_df"] = processed_df
+            # Populate cache only when we have full data
+            upload_sessions[upload_id] = session_data
+        
+        return session_data
+        
+    except Exception as e:
+        logger.error("Failed to reconstruct upload session", upload_id=upload_id, error=str(e))
+        return None
 
 
 @router.post("/upload")

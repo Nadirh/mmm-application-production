@@ -6,7 +6,7 @@ from typing import Dict, List, Tuple, Optional
 import pandas as pd
 from enum import Enum
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, UTC
 
 
 class ValidationErrorCode(Enum):
@@ -157,12 +157,19 @@ class DataValidator:
         if "date" in df.columns:
             try:
                 date_col = pd.to_datetime(df["date"], errors='coerce')
-                date_range = (date_col.min(), date_col.max())
-            except Exception:
+                # Localize timezone-naive timestamps to UTC
+                if date_col.dt.tz is None:
+                    date_col = date_col.dt.tz_localize(UTC)
+                # Convert to timezone-aware datetime objects
+                date_min = date_col.min().to_pydatetime()
+                date_max = date_col.max().to_pydatetime()
+                date_range = (date_min, date_max)
+            except Exception as e:
                 # Fallback for malformed dates
-                date_range = (datetime.now(), datetime.now())
+                print(f"Date parsing error: {e}")  # Debug print
+                date_range = (datetime.now(UTC), datetime.now(UTC))
         else:
-            date_range = (datetime.now(), datetime.now())
+            date_range = (datetime.now(UTC), datetime.now(UTC))
         
         business_tier = self._classify_business_tier(total_days, total_annual_spend, df, spend_columns)
         data_quality_score = self._calculate_quality_score(df)

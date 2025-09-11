@@ -45,6 +45,18 @@ class DatabaseManager:
             database_url,
             echo=settings.database.echo,
             pool_pre_ping=True,
+            # Add production optimizations
+            pool_size=20,
+            max_overflow=30,
+            pool_timeout=30,
+            pool_recycle=3600,
+            # Add query timeout protection
+            connect_args={
+                "server_settings": {
+                    "statement_timeout": "30s",
+                    "lock_timeout": "10s"
+                }
+            } if "postgresql" in database_url else {}
         )
         
         self.async_session_maker = async_sessionmaker(

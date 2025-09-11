@@ -1,7 +1,8 @@
 """
 Model training and results endpoints.
 """
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Dict, Any, Optional
 import uuid
 import asyncio
@@ -11,7 +12,8 @@ import structlog
 from mmm.model.mmm_model import MMMModel
 from mmm.data.processor import DataProcessor
 from mmm.config.settings import settings
-from mmm.api.routes.data import upload_sessions
+from mmm.api.routes.data import upload_sessions, get_upload_session_from_db
+from mmm.database.connection import get_db
 from mmm.api.websocket import connection_manager
 from mmm.utils.progress import create_progress_tracker, create_progress_callback
 from mmm.model.response_curves import create_response_curve_generator
@@ -29,14 +31,24 @@ training_runs: Dict[str, Dict[str, Any]] = {}
 
 async def train_model_background(upload_id: str, run_id: str, config: Dict[str, Any]):
     """Background task for model training."""
+    from mmm.database.connection import db_manager
+    
     try:
         logger.info("Starting model training", run_id=run_id, upload_id=upload_id)
         
-        # Get upload data
-        if upload_id not in upload_sessions:
-            raise ValueError(f"Upload session {upload_id} not found")
+        # Get upload data from database or cache
+        session = None
+        if upload_id in upload_sessions:
+            session = upload_sessions[upload_id]
+        else:
+            # Try to retrieve from database
+            async for db in db_manager.get_session():
+                session = await get_upload_session_from_db(upload_id, db)
         
-        session = upload_sessions[upload_id]
+        if session is None:
+            raise ValueError(f"Upload session {upload_id} not found")
+            
+        logger.info("Found upload session", upload_id=upload_id, filename=session.get("filename"))
         processed_df = session["processed_df"]
         channel_info = session["channel_info"]
         
@@ -55,8 +67,24 @@ async def train_model_background(upload_id: str, run_id: str, config: Dict[str, 
         progress_tracker = create_progress_tracker(run_id, connection_manager)
         progress_callback = create_progress_callback(progress_tracker)
         
-        # Update status and broadcast training start
+        # Update status in database and memory
         training_runs[run_id]["status"] = "training"
+        
+        # Update database status
+        async for db_session in db_manager.get_session():
+            try:
+                from sqlalchemy import update
+                from mmm.database.models import TrainingRun
+                await db_session.execute(
+                    update(TrainingRun)
+                    .where(TrainingRun.id == run_id)
+                    .values(status="training", current_progress={"type": "training_started"})
+                )
+                await db_session.commit()
+                logger.info("Updated training status in database", run_id=run_id, status="training")
+            except Exception as e:
+                logger.error("Failed to update training status in database", run_id=run_id, error=str(e))
+        
         await progress_tracker.update_progress("training_started", {
             "total_folds": len(range(0, len(processed_df) - settings.model.training_window_days - settings.model.test_window_days + 1, settings.model.test_window_days))
         })
@@ -64,32 +92,59 @@ async def train_model_background(upload_id: str, run_id: str, config: Dict[str, 
         # Train model
         results = model.fit(processed_df, channel_grids, progress_callback)
         
-        # Store results
+        # Store results in memory and database
+        completion_time = datetime.now(UTC)
         training_runs[run_id].update({
             "status": "completed",
             "results": results,
             "model": model,
-            "completion_time": datetime.now(UTC),
+            "completion_time": completion_time,
         })
         
-        # Cache model results
-        model_results = {
-            "parameters": {
-                "alpha_baseline": results.parameters.alpha_baseline,
-                "alpha_trend": results.parameters.alpha_trend,
-                "channel_alphas": results.parameters.channel_alphas,
-                "channel_betas": results.parameters.channel_betas,
-                "channel_rs": results.parameters.channel_rs
-            },
-            "performance": {
-                "cv_mape": results.cv_mape,
-                "r_squared": results.r_squared,
-                "mape": results.mape
-            },
-            "diagnostics": results.diagnostics,
-            "confidence_intervals": results.confidence_intervals
-        }
-        await cache_manager.cache_model_results(run_id, model_results)
+        # Update database with completion
+        async for db_session in db_manager.get_session():
+            try:
+                from sqlalchemy import update
+                from mmm.database.models import TrainingRun
+                
+                model_results = {
+                    "parameters": {
+                        "alpha_baseline": results.parameters.alpha_baseline,
+                        "alpha_trend": results.parameters.alpha_trend,
+                        "channel_alphas": results.parameters.channel_alphas,
+                        "channel_betas": results.parameters.channel_betas,
+                        "channel_rs": results.parameters.channel_rs
+                    },
+                    "performance": {
+                        "cv_mape": results.cv_mape,
+                        "r_squared": results.r_squared,
+                        "mape": results.mape
+                    },
+                    "diagnostics": results.diagnostics,
+                    "confidence_intervals": results.confidence_intervals
+                }
+                
+                await db_session.execute(
+                    update(TrainingRun)
+                    .where(TrainingRun.id == run_id)
+                    .values(
+                        status="completed",
+                        completion_time=completion_time,
+                        model_parameters=model_results["parameters"],
+                        model_performance=model_results["performance"],
+                        diagnostics=model_results["diagnostics"],
+                        confidence_intervals=model_results["confidence_intervals"],
+                        current_progress={"type": "completed"}
+                    )
+                )
+                await db_session.commit()
+                logger.info("Training completion saved to database", run_id=run_id)
+                
+                # Cache model results
+                await cache_manager.cache_model_results(run_id, model_results)
+                
+            except Exception as e:
+                logger.error("Failed to save training completion to database", run_id=run_id, error=str(e))
         
         # Broadcast training completion
         await progress_tracker.update_progress("training_complete", {
@@ -107,11 +162,35 @@ async def train_model_background(upload_id: str, run_id: str, config: Dict[str, 
         
     except Exception as e:
         logger.error("Model training failed", run_id=run_id, error=str(e))
-        training_runs[run_id].update({
-            "status": "failed",
-            "error": str(e),
-            "completion_time": datetime.now(UTC),
-        })
+        completion_time = datetime.now(UTC)
+        
+        # Update memory
+        if run_id in training_runs:
+            training_runs[run_id].update({
+                "status": "failed",
+                "error": str(e),
+                "completion_time": completion_time,
+            })
+        
+        # Update database with error
+        try:
+            async for db_session in db_manager.get_session():
+                from sqlalchemy import update
+                from mmm.database.models import TrainingRun
+                await db_session.execute(
+                    update(TrainingRun)
+                    .where(TrainingRun.id == run_id)
+                    .values(
+                        status="failed",
+                        completion_time=completion_time,
+                        error_message=str(e),
+                        current_progress={"type": "failed", "error": str(e)}
+                    )
+                )
+                await db_session.commit()
+                logger.info("Training failure saved to database", run_id=run_id)
+        except Exception as db_error:
+            logger.error("Failed to save training error to database", run_id=run_id, error=str(db_error))
         
         # Broadcast training error
         if 'progress_tracker' in locals():
@@ -124,7 +203,8 @@ async def train_model_background(upload_id: str, run_id: str, config: Dict[str, 
 async def train_model(
     upload_id: str,
     background_tasks: BackgroundTasks,
-    config: Optional[Dict[str, Any]] = None
+    config: Optional[Dict[str, Any]] = None,
+    db: AsyncSession = Depends(get_db)
 ) -> Dict[str, str]:
     """
     Start model training for uploaded data.
@@ -136,24 +216,54 @@ async def train_model(
     Returns:
         run_id: Unique identifier for this training run
     """
-    if upload_id not in upload_sessions:
+    # Check if upload session exists in cache or database
+    session = None
+    if upload_id in upload_sessions:
+        session = upload_sessions[upload_id]
+    else:
+        session = await get_upload_session_from_db(upload_id, db)
+    
+    if session is None:
         raise HTTPException(status_code=404, detail="Upload session not found")
     
     config = config or {}
     run_id = str(uuid.uuid4())
     
-    # Initialize training run
-    training_runs[run_id] = {
-        "upload_id": upload_id,
-        "run_id": run_id,
-        "start_time": datetime.now(UTC),
-        "status": "queued",
-        "config": config,
-        "progress": {"type": "queued"}
-    }
-    
-    # Start background training
-    background_tasks.add_task(train_model_background, upload_id, run_id, config)
+    # Create database training run entry with proper transaction handling
+    try:
+        from mmm.database.models import TrainingRun
+        
+        start_time = datetime.now(UTC)
+        db_training_run = TrainingRun(
+            id=run_id,
+            upload_session_id=upload_id,
+            start_time=start_time,
+            status="queued",
+            training_config=config,
+            current_progress={"type": "queued"}
+        )
+        db.add(db_training_run)
+        await db.commit()
+        
+        logger.info("Training run created in database", run_id=run_id, upload_id=upload_id)
+        
+        # Also store in memory cache for immediate access
+        training_runs[run_id] = {
+            "upload_id": upload_id,
+            "run_id": run_id,
+            "start_time": start_time,
+            "status": "queued",
+            "config": config,
+            "progress": {"type": "queued"}
+        }
+        
+        # Start background training
+        background_tasks.add_task(train_model_background, upload_id, run_id, config)
+        
+    except Exception as e:
+        logger.error("Failed to create training run", run_id=run_id, upload_id=upload_id, error=str(e))
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to create training run: {str(e)}")
     
     logger.info("Model training queued", run_id=run_id, upload_id=upload_id)
     
@@ -161,21 +271,49 @@ async def train_model(
 
 
 @router.get("/training/progress/{run_id}")
-async def get_training_progress(run_id: str) -> Dict[str, Any]:
+async def get_training_progress(run_id: str, db: AsyncSession = Depends(get_db)) -> Dict[str, Any]:
     """Get real-time training progress."""
-    if run_id not in training_runs:
-        raise HTTPException(status_code=404, detail="Training run not found")
+    # Check memory cache first
+    if run_id in training_runs:
+        run = training_runs[run_id]
+        return {
+            "run_id": run_id,
+            "status": run["status"],
+            "start_time": run["start_time"].isoformat(),
+            "last_update": run.get("last_update", run["start_time"]).isoformat(),
+            "progress": run.get("progress", {}),
+            "error": run.get("error")
+        }
     
-    run = training_runs[run_id]
-    
-    return {
-        "run_id": run_id,
-        "status": run["status"],
-        "start_time": run["start_time"].isoformat(),
-        "last_update": run.get("last_update", run["start_time"]).isoformat(),
-        "progress": run.get("progress", {}),
-        "error": run.get("error")
-    }
+    # Check database with timeout protection
+    try:
+        from sqlalchemy import select
+        from mmm.database.models import TrainingRun
+        
+        # Use a simpler query with timeout
+        result = await db.execute(
+            select(TrainingRun.id, TrainingRun.status, TrainingRun.start_time, 
+                   TrainingRun.completion_time, TrainingRun.current_progress, 
+                   TrainingRun.error_message)
+            .where(TrainingRun.id == run_id)
+        )
+        db_run = result.first()
+        
+        if db_run is None:
+            raise HTTPException(status_code=404, detail="Training run not found")
+        
+        return {
+            "run_id": run_id,
+            "status": db_run.status,
+            "start_time": db_run.start_time.isoformat() if db_run.start_time else None,
+            "last_update": (db_run.completion_time or db_run.start_time).isoformat() if db_run.start_time else None,
+            "progress": db_run.current_progress or {},
+            "error": db_run.error_message
+        }
+        
+    except Exception as e:
+        logger.error("Failed to retrieve training progress", run_id=run_id, error=str(e))
+        raise HTTPException(status_code=500, detail="Failed to retrieve training progress")
 
 
 @router.get("/results/{run_id}")

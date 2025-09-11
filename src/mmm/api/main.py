@@ -4,7 +4,7 @@ Main FastAPI application for MMM.
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 import structlog
 import traceback
@@ -16,7 +16,7 @@ from fastapi.encoders import jsonable_encoder
 from contextlib import asynccontextmanager
 
 from mmm.config.settings import settings
-from mmm.api.routes import data, model, optimization, health, websocket
+from mmm.api.routes import data, model, optimization, health, websocket, admin
 
 
 # Configure structured logging
@@ -165,15 +165,36 @@ app.include_router(health.router, prefix="/api/health", tags=["health"])
 app.include_router(data.router, prefix="/api/data", tags=["data"])
 app.include_router(model.router, prefix="/api/model", tags=["model"])
 app.include_router(optimization.router, prefix="/api/optimization", tags=["optimization"])
+app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
 app.include_router(websocket.router, prefix="/ws", tags=["websocket"])
 
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
-@app.get("/")
+@app.get("/", response_class=HTMLResponse)
 async def root():
-    """Root endpoint."""
+    """Serve the frontend application."""
+    try:
+        with open("static/index.html", "r") as f:
+            return f.read()
+    except FileNotFoundError:
+        return HTMLResponse("""
+        <!DOCTYPE html>
+        <html>
+        <head><title>MMM Dashboard</title></head>
+        <body>
+            <h1>Media Mix Modeling API</h1>
+            <p>Version: 1.0.0</p>
+            <p>Environment: production</p>
+            <p>Frontend not found. Please check static files.</p>
+        </body>
+        </html>
+        """)
+
+@app.get("/api/info")
+async def api_info():
+    """API information endpoint."""
     return {
         "message": "Media Mix Modeling API",
         "version": "1.0.0",
