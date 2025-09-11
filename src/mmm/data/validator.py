@@ -191,11 +191,28 @@ class DataValidator:
     
     def _generate_summary(self, df: pd.DataFrame) -> DataSummary:
         """Generates data summary including business tier classification."""
-        spend_columns = [col for col in df.columns if col not in ["date", "profit", "is_holiday", "promo_flag", "site_outage"]]
+        # Convert to numeric types first
+        df_numeric = self._convert_numeric_columns(df)
         
-        total_days = int(len(df))
-        total_profit = float(df["profit"].sum()) if "profit" in df.columns else 0.0
-        total_annual_spend = float(df[spend_columns].sum().sum()) if spend_columns else 0.0
+        spend_columns = [col for col in df_numeric.columns if col not in ["date", "profit", "is_holiday", "promo_flag", "site_outage"]]
+        
+        total_days = int(len(df_numeric))
+        
+        # Safe calculation with numeric conversion
+        try:
+            total_profit = float(df_numeric["profit"].sum()) if "profit" in df_numeric.columns else 0.0
+        except (TypeError, ValueError):
+            total_profit = 0.0
+        
+        # Safe spend calculation - only sum numeric columns
+        try:
+            if spend_columns:
+                numeric_spend_cols = [col for col in spend_columns if pd.api.types.is_numeric_dtype(df_numeric[col])]
+                total_annual_spend = float(df_numeric[numeric_spend_cols].sum().sum()) if numeric_spend_cols else 0.0
+            else:
+                total_annual_spend = 0.0
+        except (TypeError, ValueError):
+            total_annual_spend = 0.0
         channel_count = int(len(spend_columns))
         
         if "date" in df.columns:
@@ -215,8 +232,8 @@ class DataValidator:
         else:
             date_range = (datetime.now(UTC), datetime.now(UTC))
         
-        business_tier = self._classify_business_tier(total_days, total_annual_spend, df, spend_columns)
-        data_quality_score = self._calculate_quality_score(df)
+        business_tier = self._classify_business_tier(total_days, total_annual_spend, df_numeric, spend_columns)
+        data_quality_score = self._calculate_quality_score(df_numeric)
         
         return DataSummary(
             total_days=total_days,
@@ -243,9 +260,15 @@ class DataValidator:
             meets_channel_spend = True
             if spend_columns and thresholds["min_channel_spend"] > 0:
                 for col in spend_columns:
-                    if col in df.columns and df[col].sum() < thresholds["min_channel_spend"]:
-                        meets_channel_spend = False
-                        break
+                    if col in df.columns:
+                        try:
+                            col_sum = pd.to_numeric(df[col], errors='coerce').sum()
+                            if pd.isna(col_sum) or col_sum < thresholds["min_channel_spend"]:
+                                meets_channel_spend = False
+                                break
+                        except (TypeError, ValueError):
+                            meets_channel_spend = False
+                            break
             
             if meets_days and meets_spend and meets_channel_spend:
                 return tier
@@ -268,7 +291,14 @@ class DataValidator:
         spend_columns = [col for col in df.columns if col not in ["date", "profit", "is_holiday", "promo_flag", "site_outage"]]
         for col in spend_columns:
             if col in df.columns:
-                negative_pct = float((df[col] < 0).sum()) / len(df)
+                try:
+                    col_numeric = pd.to_numeric(df[col], errors='coerce')
+                    if not col_numeric.isna().all():
+                        negative_pct = float((col_numeric < 0).sum()) / len(df)
+                    else:
+                        negative_pct = 0.0
+                except (TypeError, ValueError):
+                    negative_pct = 0.0
                 score -= negative_pct * 30
         
         return float(max(0.0, score))
