@@ -175,9 +175,11 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 @app.get("/", response_class=HTMLResponse)
 async def root():
     """Serve the frontend application."""
+    import aiofiles
     try:
-        with open("static/index.html", "r") as f:
-            return f.read()
+        async with aiofiles.open("static/index.html", "r") as f:
+            content = await f.read()
+            return HTMLResponse(content)
     except FileNotFoundError:
         return HTMLResponse("""
         <!DOCTYPE html>
