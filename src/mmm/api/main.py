@@ -1,16 +1,17 @@
 """
 Main FastAPI application for MMM.
 """
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.responses import JSONResponse, HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 import structlog
 import traceback
 import time
 import json
 import numpy as np
+import os
 from datetime import datetime
 from fastapi.encoders import jsonable_encoder
 from contextlib import asynccontextmanager
@@ -173,13 +174,11 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 @app.get("/", response_class=HTMLResponse)
-async def root():
+def root():
     """Serve the frontend application."""
-    import aiofiles
     try:
-        async with aiofiles.open("static/index.html", "r") as f:
-            content = await f.read()
-            return HTMLResponse(content)
+        with open("static/index.html", "r") as f:
+            return HTMLResponse(f.read())
     except FileNotFoundError:
         return HTMLResponse("""
         <!DOCTYPE html>
