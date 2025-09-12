@@ -358,7 +358,13 @@ class MMMModel:
         # In practice, could weight by performance or use more sophisticated selection
         
         if not cv_folds:
-            raise ValueError("No cross-validation folds available")
+            raise ValueError(
+                f"No cross-validation folds were created. This typically means your dataset "
+                f"is too small for the configured training window ({self.training_window_days} days) "
+                f"and test window ({self.test_window_days} days). "
+                f"Minimum required: {self.training_window_days + self.test_window_days} days for basic training, "
+                f"but more data (182+ days) is recommended for reliable model performance."
+            )
         
         # Use parameters from best-performing fold
         best_fold = min(cv_folds, key=lambda f: f.mape)

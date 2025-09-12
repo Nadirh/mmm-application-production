@@ -240,7 +240,49 @@ async def train_model(
     if session is None:
         raise HTTPException(status_code=404, detail="Upload session not found")
     
+    # Validate data requirements before starting training
+    data_summary = session.get("data_summary", {})
+    total_days = data_summary.get("total_days", 0)
+    
+    # Get training configuration with defaults
     config = config or {}
+    training_window_days = config.get("training_window_days", settings.model.training_window_days)
+    test_window_days = config.get("test_window_days", settings.model.test_window_days)
+    
+    # Calculate minimum required days for cross-validation
+    min_required_days = max(
+        settings.model.min_training_days,  # Absolute minimum from config
+        training_window_days + test_window_days  # Minimum for at least one fold
+    )
+    
+    if total_days < min_required_days:
+        error_msg = (
+            f"Insufficient data for training. Your dataset has {total_days} days, "
+            f"but training requires at least {min_required_days} days. "
+            f"This ensures proper cross-validation with a {training_window_days}-day training window "
+            f"and {test_window_days}-day test window. Please upload a dataset with more historical data."
+        )
+        raise HTTPException(status_code=400, detail=error_msg)
+    
+    # Calculate how many cross-validation folds will be created
+    available_folds = (total_days - training_window_days - test_window_days) // test_window_days + 1
+    if available_folds < 1:
+        error_msg = (
+            f"Cannot create cross-validation folds with current settings. "
+            f"Dataset: {total_days} days, Training window: {training_window_days} days, "
+            f"Test window: {test_window_days} days. "
+            f"Try reducing the training or test window sizes, or upload more data."
+        )
+        raise HTTPException(status_code=400, detail=error_msg)
+    
+    logger.info(
+        "Data validation passed for training",
+        upload_id=upload_id,
+        total_days=total_days,
+        min_required_days=min_required_days,
+        available_folds=available_folds
+    )
+    
     run_id = str(uuid.uuid4())
     
     # Create database training run entry with proper transaction handling
