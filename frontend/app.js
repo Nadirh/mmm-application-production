@@ -14,6 +14,7 @@ class MMMApp {
         const browseBtn = document.getElementById('browse-btn');
         const uploadArea = document.getElementById('upload-area');
         const startTrainingBtn = document.getElementById('start-training');
+        const cancelTrainingBtn = document.getElementById('cancel-training');
 
         // File upload events
         browseBtn.addEventListener('click', () => fileInput.click());
@@ -35,8 +36,9 @@ class MMMApp {
             this.handleFileSelect(e.dataTransfer.files[0]);
         });
 
-        // Training start
+        // Training controls
         startTrainingBtn.addEventListener('click', () => this.startTraining());
+        cancelTrainingBtn.addEventListener('click', () => this.cancelTraining());
     }
 
     showStatus(message, type = 'info') {
@@ -175,6 +177,7 @@ class MMMApp {
             if (response.ok) {
                 this.runId = result.run_id;
                 this.showTrainingStatus(`🚀 Training started! Run ID: ${this.runId}`, 'success');
+                document.getElementById('cancel-training').style.display = 'block'; // Show cancel button
                 this.startProgressMonitoring();
             } else {
                 this.showTrainingStatus(`❌ Training failed to start: ${result.detail}`, 'error');
@@ -183,6 +186,40 @@ class MMMApp {
         } catch (error) {
             this.showTrainingStatus(`❌ Training error: ${error.message}`, 'error');
             document.getElementById('start-training').disabled = false;
+        }
+    }
+
+    async cancelTraining() {
+        if (!this.runId) {
+            this.showTrainingStatus('❌ No active training to cancel', 'error');
+            return;
+        }
+
+        const confirmCancel = confirm('Are you sure you want to cancel the training? This action cannot be undone.');
+        if (!confirmCancel) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`${this.apiUrl}/model/training/cancel/${this.runId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                this.showTrainingStatus('⏹️ Training cancelled successfully', 'error');
+                this.stopProgressMonitoring();
+                document.getElementById('cancel-training').style.display = 'none';
+                document.getElementById('start-training').disabled = false;
+            } else {
+                this.showTrainingStatus(`❌ Failed to cancel training: ${result.detail}`, 'error');
+            }
+        } catch (error) {
+            this.showTrainingStatus(`❌ Cancel error: ${error.message}`, 'error');
         }
     }
 
@@ -216,6 +253,9 @@ class MMMApp {
                 } else if (progress.status === 'failed') {
                     this.stopProgressMonitoring();
                     this.showTrainingFailed(progress);
+                } else if (progress.status === 'cancelled') {
+                    this.stopProgressMonitoring();
+                    this.showTrainingCancelled(progress);
                 }
             } else {
                 console.error('Progress check failed:', progress);
@@ -246,6 +286,7 @@ class MMMApp {
         document.getElementById('training-loading').classList.add('hidden');
         document.getElementById('progress-fill').style.width = '100%';
         this.showTrainingStatus('🎉 Training completed successfully!', 'success');
+        document.getElementById('cancel-training').style.display = 'none';
         
         // Show results if available
         if (progress.results) {
@@ -257,6 +298,15 @@ class MMMApp {
         document.getElementById('training-loading').classList.add('hidden');
         const errorMsg = progress.error || 'Training failed';
         this.showTrainingStatus(`❌ Training failed: ${errorMsg}`, 'error');
+        document.getElementById('cancel-training').style.display = 'none';
+        document.getElementById('start-training').disabled = false;
+    }
+
+    showTrainingCancelled(progress) {
+        document.getElementById('training-loading').classList.add('hidden');
+        const cancelMsg = progress.progress?.message || 'Training cancelled by user';
+        this.showTrainingStatus(`⏹️ ${cancelMsg}`, 'error');
+        document.getElementById('cancel-training').style.display = 'none';
         document.getElementById('start-training').disabled = false;
     }
 

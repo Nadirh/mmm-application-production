@@ -101,6 +101,27 @@
             cursor: not-allowed;
         }
 
+        .cancel-btn {
+            background: #e74c3c;
+            color: white;
+            border: none;
+            padding: 10px 25px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: background 0.3s ease;
+            margin-top: 15px;
+        }
+
+        .cancel-btn:hover {
+            background: #c0392b;
+        }
+
+        .training-controls {
+            text-align: center;
+            margin-top: 20px;
+        }
+
         .progress-bar {
             width: 100%;
             height: 8px;
@@ -340,6 +361,9 @@
             <div class="loading" id="training-loading">
                 <div class="spinner"></div>
                 <p>Training your Media Mix Model...</p>
+            </div>
+            <div class="training-controls">
+                <button class="cancel-btn" id="cancel-training" style="display: none;">❌ Cancel Training</button>
             </div>
         </div>
 

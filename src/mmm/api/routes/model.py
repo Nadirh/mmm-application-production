@@ -69,6 +69,7 @@ async def train_model_background(upload_id: str, run_id: str, config: Dict[str, 
         
         # Update status in database and memory
         training_runs[run_id]["status"] = "training"
+        training_runs[run_id]["cancelled"] = False  # Initialize cancellation flag
         
         # Update database status
         async for db_session in db_manager.get_session():
@@ -89,8 +90,21 @@ async def train_model_background(upload_id: str, run_id: str, config: Dict[str, 
             "total_folds": len(range(0, len(processed_df) - settings.model.training_window_days - settings.model.test_window_days + 1, settings.model.test_window_days))
         })
         
-        # Train model
-        results = model.fit(processed_df, channel_grids, progress_callback)
+        # Check for cancellation before starting expensive training
+        if training_runs[run_id].get("cancelled", False):
+            logger.info("Training cancelled before model fitting", run_id=run_id)
+            await progress_tracker.update_progress("cancelled", {"message": "Training cancelled by user"})
+            return
+        
+        # Train model with periodic cancellation checks
+        try:
+            results = model.fit(processed_df, channel_grids, progress_callback, 
+                              cancellation_check=lambda: training_runs[run_id].get("cancelled", False))
+        except InterruptedError as e:
+            # Training was cancelled
+            logger.info("Training cancelled during model fitting", run_id=run_id, error=str(e))
+            await progress_tracker.update_progress("cancelled", {"message": str(e)})
+            return
         
         # Store results in memory and database
         completion_time = datetime.now(UTC)
@@ -564,6 +578,56 @@ async def get_response_curve_analysis(run_id: str) -> Dict[str, Any]:
             "overall_efficiency_score": portfolio_efficiency["efficiency_score"]
         }
     }
+
+
+@router.post("/training/cancel/{run_id}")
+async def cancel_training(run_id: str, db: AsyncSession = Depends(get_db)) -> Dict[str, str]:
+    """Cancel an active training run."""
+    # Check if run exists in memory
+    if run_id not in training_runs:
+        raise HTTPException(status_code=404, detail="Training run not found")
+    
+    run = training_runs[run_id]
+    
+    # Can only cancel running or queued training
+    if run["status"] not in ["queued", "training"]:
+        raise HTTPException(status_code=400, detail=f"Cannot cancel training with status: {run['status']}")
+    
+    # Set cancellation flag
+    training_runs[run_id]["cancelled"] = True
+    training_runs[run_id]["status"] = "cancelled"
+    
+    # Update database status
+    try:
+        from sqlalchemy import update
+        from mmm.database.models import TrainingRun
+        
+        await db.execute(
+            update(TrainingRun)
+            .where(TrainingRun.id == run_id)
+            .values(
+                status="cancelled",
+                end_time=datetime.now(UTC),
+                current_progress={"type": "cancelled", "message": "Training cancelled by user"}
+            )
+        )
+        await db.commit()
+        
+        logger.info("Training run cancelled", run_id=run_id)
+        
+        # Notify via WebSocket if connected
+        await connection_manager.send_progress_update(run_id, {
+            "type": "cancelled",
+            "message": "Training cancelled by user",
+            "status": "cancelled"
+        })
+        
+    except Exception as e:
+        logger.error("Failed to update cancelled training status in database", run_id=run_id, error=str(e))
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to cancel training: {str(e)}")
+    
+    return {"message": "Training run cancelled successfully", "run_id": run_id}
 
 
 @router.delete("/training/{run_id}")

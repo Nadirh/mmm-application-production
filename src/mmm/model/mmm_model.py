@@ -10,6 +10,9 @@ from sklearn.metrics import mean_absolute_percentage_error
 from scipy.optimize import minimize
 import itertools
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import structlog
+
+logger = structlog.get_logger()
 
 
 @dataclass
@@ -60,7 +63,8 @@ class MMMModel:
     def fit(self, 
             df: pd.DataFrame, 
             channel_grids: Dict[str, Dict[str, List[float]]],
-            progress_callback: Optional[callable] = None) -> ModelResults:
+            progress_callback: Optional[callable] = None,
+            cancellation_check: Optional[callable] = None) -> ModelResults:
         """
         Fits the MMM model using walk-forward cross-validation.
         
@@ -68,6 +72,7 @@ class MMMModel:
             df: Processed DataFrame with date, profit, and channel columns
             channel_grids: Parameter grids for each channel
             progress_callback: Optional callback function for progress updates
+            cancellation_check: Optional callback function that returns True if training should be cancelled
             
         Returns:
             ModelResults object with fitted parameters and diagnostics
@@ -80,7 +85,7 @@ class MMMModel:
         
         # Perform cross-validation
         cv_folds = self._perform_cross_validation(
-            y, X_spend, X_time, spend_columns, channel_grids, progress_callback
+            y, X_spend, X_time, spend_columns, channel_grids, progress_callback, cancellation_check
         )
         
         # Select best parameters based on CV performance
@@ -125,7 +130,8 @@ class MMMModel:
                                  X_time: np.ndarray,
                                  spend_columns: List[str],
                                  channel_grids: Dict[str, Dict[str, List[float]]],
-                                 progress_callback: Optional[callable] = None) -> List[CrossValidationFold]:
+                                 progress_callback: Optional[callable] = None,
+                                 cancellation_check: Optional[callable] = None) -> List[CrossValidationFold]:
         """Performs walk-forward cross-validation."""
         folds = []
         total_days = len(y)
@@ -134,6 +140,11 @@ class MMMModel:
         fold_starts = range(0, total_days - self.training_window_days - self.test_window_days + 1, self.test_window_days)
         
         for fold_idx, fold_start in enumerate(fold_starts):
+            # Check for cancellation before each fold
+            if cancellation_check and cancellation_check():
+                logger.info(f"Training cancelled during cross-validation at fold {fold_idx}")
+                raise InterruptedError("Training cancelled by user")
+            
             train_start = fold_start
             train_end = fold_start + self.training_window_days
             test_start = train_end
