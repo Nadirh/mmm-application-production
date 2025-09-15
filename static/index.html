@@ -252,7 +252,8 @@
         }
 
         .channel-card {
-            background: #f0f4f8;
+            background: #000000;
+            color: #ffffff;
             padding: 15px;
             border-radius: 8px;
             border-left: 4px solid #667eea;
@@ -260,13 +261,13 @@
 
         .channel-name {
             font-weight: bold;
-            color: #333;
+            color: #ffffff;
             margin-bottom: 10px;
         }
 
         .channel-stats {
             font-size: 0.9rem;
-            color: #666;
+            color: #cccccc;
         }
 
         .parameters-grid {
@@ -277,10 +278,12 @@
         }
 
         .parameter-card {
-            background: #f8f9ff;
+            background: #ffffff;
             padding: 20px;
             border-radius: 10px;
-            border-left: 4px solid #667eea;
+            border-left: 4px solid #2d5aa0;
+            border: 1px solid #e0e6ed;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
 
         .parameter-channel {
@@ -305,8 +308,12 @@
 
         .parameter-value {
             font-weight: bold;
-            color: #667eea;
+            color: #1a472a;
             font-size: 1rem;
+            background: #f8f9fa;
+            padding: 4px 8px;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
         }
 
         /* Response Curve Equation Styles */
@@ -387,13 +394,52 @@
             margin: 0 15px;
         }
 
-        .parameter-value {
+        .equation-parameter-value {
             font-weight: bold;
-            background: rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.9);
+            color: #333;
             padding: 4px 8px;
             border-radius: 4px;
             min-width: 60px;
             text-align: center;
+        }
+
+        /* Response Curve Chart Styles */
+        .response-curves-section {
+            margin-top: 30px;
+            border: 3px solid #28a745;
+            padding: 20px;
+            background: #fff;
+            border-radius: 8px;
+        }
+
+        .response-curves-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 30px;
+            margin-top: 20px;
+        }
+
+        .response-curve-card {
+            background: #ffffff;
+            border: 2px solid #e0e6ed;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .response-curve-title {
+            font-size: 1.4rem;
+            font-weight: bold;
+            color: #2d5aa0;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin: 10px 0;
         }
 
         /* Marginal ROI Styles */
@@ -460,6 +506,232 @@
             text-align: center;
             margin-top: 10px;
             font-style: italic;
+        }
+
+        /* Marginal ROI Curve Styles */
+        .mroi-curves-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 30px;
+            margin-top: 20px;
+        }
+
+        .mroi-curve-card {
+            background: #ffffff;
+            border: 2px solid #28a745;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 12px rgba(40, 167, 69, 0.1);
+        }
+
+        .mroi-curve-title {
+            font-size: 1.4rem;
+            font-weight: bold;
+            color: #28a745;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        .baseline-info {
+            font-size: 0.9rem;
+            color: #17a2b8;
+            font-weight: normal;
+            margin-top: 5px;
+        }
+
+        .mroi-chart-container {
+            position: relative;
+            height: 300px;
+            margin: 10px 0;
+        }
+
+        /* Profit Maximizer Styles */
+        .profit-maximizer-form {
+            display: flex;
+            flex-direction: column;
+            gap: 25px;
+        }
+
+        .budget-input-section h4,
+        .constraints-section h4 {
+            color: #007bff;
+            margin-bottom: 15px;
+            font-size: 1.1rem;
+        }
+
+        .budget-input-row {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        .budget-input {
+            padding: 10px;
+            border: 2px solid #007bff;
+            border-radius: 8px;
+            font-size: 1rem;
+            width: 150px;
+        }
+
+        .optimize-btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+
+        .optimize-btn:hover {
+            background: #0056b3;
+        }
+
+        .constraints-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .constraint-row {
+            display: flex;
+            align-items: center;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+        }
+
+        .channel-label {
+            font-weight: bold;
+            color: #333;
+            min-width: 120px;
+        }
+
+        .constraint-inputs {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            flex: 1;
+        }
+
+        .constraint-input {
+            padding: 8px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            width: 100px;
+            font-size: 0.9rem;
+        }
+
+        .baseline-hint {
+            color: #6c757d;
+            font-size: 0.85rem;
+            margin-left: 10px;
+        }
+
+        .optimization-results {
+            background: #f8f9fa;
+            border: 2px solid #28a745;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+
+        .optimization-results h4 {
+            color: #28a745;
+            margin-bottom: 15px;
+        }
+
+        .allocation-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .allocation-item {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+        }
+
+        .channel-allocation {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .channel-name {
+            font-weight: bold;
+            color: #333;
+        }
+
+        .allocation-amount {
+            color: #007bff;
+            font-weight: bold;
+        }
+
+        .allocation-bar {
+            height: 8px;
+            background: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .allocation-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #007bff, #0056b3);
+            transition: width 0.3s ease;
+        }
+
+        .profit-summary {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+        }
+
+        .profit-metrics {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .profit-metric {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .profit-metric:last-child {
+            border-bottom: none;
+        }
+
+        .metric-label {
+            color: #6c757d;
+            font-weight: normal;
+        }
+
+        .metric-value {
+            color: #28a745;
+            font-weight: bold;
+            font-size: 1.1rem;
+        }
+
+        .error-message {
+            color: #dc3545;
+            background: #f8d7da;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #f5c6cb;
         }
 
         @media (max-width: 768px) {
@@ -546,6 +818,7 @@
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="/static/app.js"></script>
 </body>
 </html>
