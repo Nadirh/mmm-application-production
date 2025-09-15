@@ -323,11 +323,13 @@ class MMMApp {
                 const results = await response.json();
                 
                 if (response.ok) {
+                    console.log('Results fetched successfully:', results);
                     this.displayResults(results);
                     // Fetch marginal ROI data separately
                     await this.fetchAndDisplayMarginalROI();
                 } else {
                     console.error('Failed to fetch results:', results);
+                    console.error('Response status:', response.status);
                     this.showTrainingStatus('🎉 Training completed! (Results unavailable)', 'success');
                 }
             } catch (error) {
@@ -337,6 +339,7 @@ class MMMApp {
         } else {
             // Fallback: try to show results from progress if available
             if (progress.results) {
+                console.log('Using fallback results from progress:', progress.results);
                 this.displayResults(progress.results);
             }
         }
@@ -359,11 +362,13 @@ class MMMApp {
     }
 
     displayResults(results) {
+        console.log('displayResults called with:', results);
         this.showSection('results-section');
-        
+
         // Handle both old format (progress.results) and new format (API response)
         const performance = results.model_performance || results;
         const parameters = results.parameters;
+        console.log('Extracted parameters:', parameters);
         
         const resultsHtml = `
             <div class="metric-card">
