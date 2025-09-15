@@ -269,6 +269,199 @@
             color: #666;
         }
 
+        .parameters-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 15px;
+        }
+
+        .parameter-card {
+            background: #f8f9ff;
+            padding: 20px;
+            border-radius: 10px;
+            border-left: 4px solid #667eea;
+        }
+
+        .parameter-channel {
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 1.1rem;
+        }
+
+        .parameter-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            padding: 5px 0;
+        }
+
+        .parameter-label {
+            font-size: 0.95rem;
+            color: #666;
+        }
+
+        .parameter-value {
+            font-weight: bold;
+            color: #667eea;
+            font-size: 1rem;
+        }
+
+        /* Response Curve Equation Styles */
+        .equations-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .equation-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 12px;
+            padding: 25px;
+            color: white;
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.2);
+            transition: transform 0.3s ease;
+        }
+
+        .equation-card:hover {
+            transform: translateY(-3px);
+        }
+
+        .equation-channel {
+            font-size: 1.4rem;
+            font-weight: bold;
+            margin-bottom: 20px;
+            text-align: center;
+            text-transform: capitalize;
+        }
+
+        .equation-formula {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 10px;
+            margin: 15px 0;
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .equation-text {
+            font-size: 1.1rem;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .equation-explanation {
+            font-size: 0.9rem;
+            opacity: 0.85;
+            line-height: 1.4;
+            font-style: italic;
+        }
+
+        .equation-parameters {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+        }
+
+        .parameter-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 8px 0;
+            font-size: 0.95rem;
+        }
+
+        .parameter-symbol {
+            font-weight: bold;
+            font-family: 'Courier New', monospace;
+        }
+
+        .parameter-description {
+            opacity: 0.9;
+            flex: 1;
+            margin: 0 15px;
+        }
+
+        .parameter-value {
+            font-weight: bold;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 4px 8px;
+            border-radius: 4px;
+            min-width: 60px;
+            text-align: center;
+        }
+
+        /* Marginal ROI Styles */
+        .marginal-roi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .marginal-roi-card {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            border-radius: 12px;
+            padding: 20px;
+            color: white;
+            box-shadow: 0 4px 15px rgba(40, 167, 69, 0.2);
+            transition: transform 0.3s ease;
+        }
+
+        .marginal-roi-card:hover {
+            transform: translateY(-2px);
+        }
+
+        .roi-channel {
+            font-size: 1.3rem;
+            font-weight: bold;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        .roi-values {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .roi-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .roi-item:last-child {
+            border-bottom: none;
+        }
+
+        .roi-label {
+            font-size: 0.95rem;
+            opacity: 0.9;
+        }
+
+        .roi-value {
+            font-weight: bold;
+            font-size: 1.1rem;
+        }
+
+        .roi-interpretation {
+            background: rgba(255, 255, 255, 0.15);
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            text-align: center;
+            margin-top: 10px;
+            font-style: italic;
+        }
+
         @media (max-width: 768px) {
             .container {
                 padding: 10px;
@@ -314,39 +507,18 @@
             <div id="channel-info"></div>
         </div>
 
-        <!-- Step 3: Training Configuration -->
+        <!-- Step 2: Start Training -->
         <div class="card hidden" id="config-section">
-            <h2>⚙️ Step 2: Configure Model Training</h2>
-            <div class="training-config">
-                <div class="config-group">
-                    <label for="carryover-prior">Carryover Prior:</label>
-                    <select id="carryover-prior">
-                        <option value="uniform">Uniform</option>
-                        <option value="normal">Normal</option>
-                    </select>
-                </div>
-                <div class="config-group">
-                    <label for="saturation-prior">Saturation Prior:</label>
-                    <select id="saturation-prior">
-                        <option value="uniform">Uniform</option>
-                        <option value="normal">Normal</option>
-                    </select>
-                </div>
-                <div class="config-group">
-                    <label for="media-transform">Media Transform:</label>
-                    <select id="media-transform">
-                        <option value="adstock">Adstock</option>
-                        <option value="geometric">Geometric</option>
-                    </select>
-                </div>
-                <div class="config-group">
-                    <label for="max-lag">Max Lag:</label>
-                    <input type="number" id="max-lag" value="8" min="1" max="20">
-                </div>
-                <div class="config-group">
-                    <label for="iterations">Iterations:</label>
-                    <input type="number" id="iterations" value="2000" min="500" max="10000" step="500">
-                </div>
+            <h2>🚀 Step 2: Start Model Training</h2>
+            <div class="training-info">
+                <p>Your data has been uploaded and validated. Click below to start training the Media Mix Model.</p>
+                <p><strong>Training Configuration:</strong></p>
+                <ul>
+                    <li>✅ Adstock transformation for carryover effects</li>
+                    <li>✅ Saturation curves for diminishing returns</li>
+                    <li>✅ Cross-validation for robust estimates</li>
+                    <li>⚡ Fast training with optimized parameter grid</li>
+                </ul>
             </div>
             <button class="upload-btn" id="start-training" disabled>🚀 Start Training</button>
         </div>
