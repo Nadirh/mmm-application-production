@@ -28,12 +28,14 @@ class ResponseCurveGenerator:
         self.channel_rs = model_parameters.get("channel_rs", {})
         self.alpha_baseline = model_parameters.get("alpha_baseline", 1000.0)
     
-    def generate_response_curve(self, 
+    def generate_response_curve(self,
                               channel: str,
                               min_spend: float = 0,
                               max_spend: float = None,
                               num_points: int = 100,
-                              current_spend: float = None) -> Dict[str, Any]:
+                              current_spend: float = None,
+                              include_confidence_intervals: bool = True,
+                              avg_daily_spend_28d: float = None) -> Dict[str, Any]:
         """
         Generate response curve for a specific channel.
         
@@ -57,7 +59,9 @@ class ResponseCurveGenerator:
         
         # Auto-calculate max spend if not provided
         if max_spend is None:
-            if current_spend:
+            if avg_daily_spend_28d and isinstance(avg_daily_spend_28d, (int, float)) and avg_daily_spend_28d > 0:
+                max_spend = avg_daily_spend_28d * 2  # 2x 28-day average spend
+            elif current_spend and isinstance(current_spend, (int, float)) and current_spend > 0:
                 max_spend = current_spend * 3  # 3x current spend
             else:
                 max_spend = 50000  # Default max spend
@@ -68,23 +72,32 @@ class ResponseCurveGenerator:
         # Calculate incremental profit for each spend level
         incremental_profits = []
         marginal_roas = []
-        
+        confidence_intervals = {"lower": [], "upper": []} if include_confidence_intervals else None
+
         for spend in spend_levels:
             # Apply adstock transformation (simplified for curve generation)
             adstocked_spend = spend / (1 - r) if r < 1 else spend
-            
+
             # Apply saturation transformation
             saturated_spend = np.power(adstocked_spend, beta) if beta > 0 else adstocked_spend
-            
+
             # Calculate incremental profit
             incremental_profit = alpha * saturated_spend
             incremental_profits.append(incremental_profit)
-            
+
             # Calculate marginal ROAS (derivative)
             if spend > 0:
                 marginal_roas.append(self._calculate_marginal_roas(spend, alpha, beta, r))
             else:
                 marginal_roas.append(0)
+
+            # Calculate 95% confidence intervals if requested
+            if include_confidence_intervals:
+                ci_lower, ci_upper = self._calculate_confidence_intervals(
+                    incremental_profit, alpha, beta, r
+                )
+                confidence_intervals["lower"].append(ci_lower)
+                confidence_intervals["upper"].append(ci_upper)
         
         # Find key points
         saturation_point = self._find_saturation_point(spend_levels, incremental_profits)
@@ -95,7 +108,7 @@ class ResponseCurveGenerator:
             spend_levels, incremental_profits, current_spend
         )
         
-        return {
+        result = {
             "channel": channel,
             "spend_levels": spend_levels.tolist(),
             "incremental_profits": incremental_profits,
@@ -110,10 +123,16 @@ class ResponseCurveGenerator:
                 "r": r
             }
         }
+
+        # Add confidence intervals if calculated
+        if confidence_intervals:
+            result["confidence_intervals"] = confidence_intervals
+
+        return result
     
     def generate_all_response_curves(self,
                                    current_spend: Dict[str, float] = None,
-                                   spend_multiplier: float = 3.0,
+                                   spend_multiplier: float = 2.0,
                                    num_points: int = 100) -> Dict[str, Dict[str, Any]]:
         """Generate response curves for all channels."""
         curves = {}
@@ -121,14 +140,19 @@ class ResponseCurveGenerator:
         
         for channel in self.channel_alphas.keys():
             try:
-                channel_current = current_spend.get(channel)
-                max_spend = channel_current * spend_multiplier if channel_current else None
-                
+                channel_current = current_spend.get(channel) if current_spend else None
+                # Ensure channel_current is a number, not a dict
+                if isinstance(channel_current, dict):
+                    channel_current = None
+
+                max_spend = channel_current * spend_multiplier if channel_current and isinstance(channel_current, (int, float)) else None
+
                 curve = self.generate_response_curve(
                     channel=channel,
                     max_spend=max_spend,
                     num_points=num_points,
-                    current_spend=channel_current
+                    current_spend=channel_current,
+                    avg_daily_spend_28d=channel_current
                 )
                 curves[channel] = curve
                 
@@ -149,7 +173,38 @@ class ResponseCurveGenerator:
         marginal_profit = alpha * beta * (adstock_factor ** beta) * (spend ** (beta - 1))
         
         return marginal_profit / spend if spend > 0 else 0
-    
+
+    def _calculate_confidence_intervals(self, incremental_profit: float,
+                                      alpha: float, beta: float, r: float) -> Tuple[float, float]:
+        """Calculate 95% confidence intervals for the incremental profit prediction."""
+        # Simulate parameter uncertainty (simplified approach)
+        # In practice, you'd use the actual parameter covariance matrix from model fitting
+
+        # Assume 10% uncertainty in alpha (main driver of confidence intervals)
+        alpha_std = alpha * 0.1
+
+        # Assume 5% uncertainty in beta and r
+        beta_std = beta * 0.05
+        r_std = r * 0.05
+
+        # Use normal approximation with 1.96 * std for 95% CI
+        z_score = 1.96
+
+        # Calculate uncertainty in incremental profit
+        # Main uncertainty comes from alpha parameter
+        profit_std = incremental_profit * (alpha_std / alpha) if alpha > 0 else incremental_profit * 0.1
+
+        # Add small amount of uncertainty from beta and r parameters
+        profit_std += incremental_profit * 0.02  # Additional 2% uncertainty
+
+        ci_lower = incremental_profit - z_score * profit_std
+        ci_upper = incremental_profit + z_score * profit_std
+
+        # Ensure lower bound is non-negative
+        ci_lower = max(0, ci_lower)
+
+        return ci_lower, ci_upper
+
     def _find_saturation_point(self, spend_levels: np.ndarray, profits: List[float]) -> Dict[str, float]:
         """Find the saturation point where marginal returns significantly diminish."""
         profits_array = np.array(profits)
@@ -256,16 +311,25 @@ class CachedResponseCurveGenerator:
     async def get_all_response_curves(self, **kwargs) -> Dict[str, Dict[str, Any]]:
         """Get all response curves with caching."""
         curves = {}
-        
+
+        # Extract current_spend if it's a dictionary
+        current_spend_dict = kwargs.get('current_spend', {})
+
         # Get curves for each channel
         for channel in self.generator.channel_alphas.keys():
             try:
-                curve = await self.get_response_curve(channel, **kwargs)
+                # Extract individual channel value from current_spend dictionary
+                channel_kwargs = kwargs.copy()
+                if isinstance(current_spend_dict, dict):
+                    channel_kwargs['current_spend'] = current_spend_dict.get(channel)
+                    channel_kwargs['avg_daily_spend_28d'] = current_spend_dict.get(channel)
+
+                curve = await self.get_response_curve(channel, **channel_kwargs)
                 curves[channel] = curve
             except Exception as e:
-                logger.warning("Failed to get response curve", 
+                logger.warning("Failed to get response curve",
                              channel=channel, error=str(e))
-        
+
         return curves
     
     async def invalidate_cache(self):

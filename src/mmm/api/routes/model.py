@@ -8,6 +8,7 @@ import uuid
 import asyncio
 from datetime import datetime, UTC
 import structlog
+import pandas as pd
 
 from mmm.model.mmm_model import MMMModel
 from mmm.data.processor import DataProcessor
@@ -530,6 +531,21 @@ async def get_response_curve(
         processed_df = upload_session["processed_df"]
         max_spend = processed_df[channel].mean() * 3 * 365  # Annualized
     
+    # Calculate 28-day average daily spend for this channel
+    upload_session = upload_sessions.get(run["upload_id"])
+    avg_daily_spend_28_days = None
+
+    if upload_session and "processed_df" in upload_session:
+        processed_df = upload_session["processed_df"]
+        if channel in processed_df.columns:
+            # Get the last 28 days of data
+            if len(processed_df) >= 28:
+                recent_data = processed_df.tail(28)
+            else:
+                recent_data = processed_df  # Use all available data if less than 28 days
+
+            avg_daily_spend_28_days = float(recent_data[channel].mean())
+
     # Get response curve (with caching)
     curve = await curve_generator.get_response_curve(
         channel=channel,
@@ -537,11 +553,12 @@ async def get_response_curve(
         num_points=num_points,
         current_spend=current_spend
     )
-    
+
     return {
         "run_id": run_id,
         "channel": channel,
-        "curve_data": curve
+        "curve_data": curve,
+        "avg_daily_spend_28_days": avg_daily_spend_28_days
     }
 
 
@@ -578,15 +595,83 @@ async def get_all_response_curves(
     # Create cached response curve generator
     curve_generator = create_response_curve_generator(run_id, model_parameters)
     
-    # Get all response curves (with caching)
+    # Calculate 28-day average daily spend from uploaded data
+    upload_session = upload_sessions.get(run["upload_id"])
+    avg_daily_spend_28_days = {}
+
+    if upload_session and "processed_df" in upload_session:
+        processed_df = upload_session["processed_df"]
+
+        # Get the last 28 days of data
+        if len(processed_df) >= 28:
+            recent_data = processed_df.tail(28)
+        else:
+            recent_data = processed_df  # Use all available data if less than 28 days
+
+        # Calculate average daily spend for each channel and correlations
+        # Only include actual spend channels, not feature/categorical columns
+        excluded_columns = ["date", "profit", "is_holiday", "promo_flag", "site_outage", "days_since_start",
+                           "day_of_week", "is_weekend", "month", "quarter", "year", "day_of_year"]
+        channel_columns = [col for col in processed_df.columns if col not in excluded_columns]
+
+        # Calculate correlations with profit
+        spend_correlations = {}
+
+        logger.info(f"Calculating correlations: channel_columns={channel_columns}, profit_column_exists={'profit' in processed_df.columns}, data_rows={len(processed_df)}")
+
+        for channel in channel_columns:
+            if channel in processed_df.columns:
+                # Calculate 28-day average if channel exists in recent data
+                if channel in recent_data.columns:
+                    avg_daily_spend_28_days[channel] = float(recent_data[channel].mean())
+                else:
+                    avg_daily_spend_28_days[channel] = float(processed_df[channel].mean())
+
+                # Calculate spend correlation with profit
+                if "profit" in processed_df.columns and len(processed_df) > 10:
+                    try:
+                        # Debug data for correlation
+                        channel_data = processed_df[channel]
+                        profit_data = processed_df["profit"]
+
+                        logger.info(f"Channel {channel} data: mean={channel_data.mean():.2f}, std={channel_data.std():.2f}, non_zero_count={(channel_data > 0).sum()}")
+                        logger.info(f"Profit data: mean={profit_data.mean():.2f}, std={profit_data.std():.2f}")
+
+                        # Check for any NaN values before correlation
+                        channel_na_count = channel_data.isna().sum()
+                        profit_na_count = profit_data.isna().sum()
+                        logger.info(f"NaN values - channel: {channel_na_count}, profit: {profit_na_count}")
+                        logger.info(f"Data types - channel: {channel_data.dtype}, profit: {profit_data.dtype}")
+
+                        # Ensure both are numeric
+                        channel_data_numeric = pd.to_numeric(channel_data, errors='coerce')
+                        profit_data_numeric = pd.to_numeric(profit_data, errors='coerce')
+
+                        spend_corr = channel_data_numeric.corr(profit_data_numeric)
+                        logger.info(f"Spend correlation for {channel}: {spend_corr:.4f}")
+                        spend_correlations[channel] = float(spend_corr) if not pd.isna(spend_corr) else 0.0
+
+                    except Exception as e:
+                        logger.error(f"Error calculating correlation for {channel}: {str(e)}")
+                        spend_correlations[channel] = 0.0
+                else:
+                    logger.warning(f"Skipping correlation for {channel}: profit column missing or insufficient data")
+            else:
+                logger.warning(f"Channel {channel} not found in recent_data columns: {list(recent_data.columns)}")
+
+        logger.info(f"Final correlations - spend: {spend_correlations}")
+
+    # Get all response curves (with caching) - pass 28-day averages for max spend calculation
     curves = await curve_generator.get_all_response_curves(
         num_points=num_points,
-        current_spend=current_spend or {}
+        current_spend=avg_daily_spend_28_days
     )
-    
+
     return {
         "run_id": run_id,
-        "response_curves": curves
+        "response_curves": curves,
+        "avg_daily_spend_28_days": avg_daily_spend_28_days,
+        "spend_correlations": spend_correlations
     }
 
 
@@ -746,12 +831,17 @@ async def force_cancel_training(run_id: str, db: AsyncSession = Depends(get_db))
 
         logger.info("Training run force-cancelled", run_id=run_id)
 
-        # Notify via WebSocket if connected
-        await connection_manager.send_progress_update(run_id, {
-            "type": "cancelled",
-            "message": "Training force-cancelled (system restart)",
-            "status": "cancelled"
-        })
+        # Notify via WebSocket if connected (ignore errors for orphaned runs)
+        try:
+            await connection_manager.broadcast_training_progress(run_id, {
+                "type": "cancelled",
+                "message": "Training force-cancelled (system restart)",
+                "status": "cancelled"
+            })
+        except Exception as ws_error:
+            # Ignore WebSocket errors for orphaned runs
+            logger.debug("WebSocket notification failed (expected for orphaned runs)",
+                        run_id=run_id, error=str(ws_error))
 
         return {"message": "Training run force-cancelled successfully", "run_id": run_id}
 

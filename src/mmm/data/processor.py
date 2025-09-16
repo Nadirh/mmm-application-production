@@ -187,30 +187,31 @@ class DataProcessor:
             Dictionary mapping channel names to their parameter grids
         """
         # Parameter grids by channel type (beta: saturation, r: adstock)
+        # 3x3 grid: all channels use same beta and r values for fast training
         type_grids = {
             ChannelType.SEARCH_BRAND: {
-                "beta": np.linspace(0.4, 0.8, 9).tolist(),
-                "r": np.linspace(0.0, 0.2, 9).tolist()
+                "beta": [0.7, 0.8, 0.9],
+                "r": [0.1, 0.2, 0.3]
             },
             ChannelType.SEARCH_NON_BRAND: {
-                "beta": np.linspace(0.5, 0.9, 9).tolist(),
-                "r": np.linspace(0.1, 0.3, 9).tolist()
+                "beta": [0.7, 0.8, 0.9],
+                "r": [0.1, 0.2, 0.3]
             },
             ChannelType.SOCIAL: {
-                "beta": np.linspace(0.3, 0.7, 9).tolist(),
-                "r": np.linspace(0.2, 0.6, 9).tolist()
+                "beta": [0.7, 0.8, 0.9],
+                "r": [0.1, 0.2, 0.3]
             },
             ChannelType.TV_VIDEO: {
-                "beta": np.linspace(0.2, 0.6, 9).tolist(),
-                "r": np.linspace(0.4, 0.8, 9).tolist()
+                "beta": [0.7, 0.8, 0.9],
+                "r": [0.1, 0.2, 0.3]
             },
             ChannelType.DISPLAY: {
-                "beta": np.linspace(0.3, 0.7, 9).tolist(),
-                "r": np.linspace(0.1, 0.5, 9).tolist()
+                "beta": [0.7, 0.8, 0.9],
+                "r": [0.1, 0.2, 0.3]
             },
             ChannelType.UNKNOWN: {
-                "beta": np.linspace(0.3, 0.7, 9).tolist(),
-                "r": np.linspace(0.1, 0.5, 9).tolist()
+                "beta": [0.7, 0.8, 0.9],
+                "r": [0.1, 0.2, 0.3]
             }
         }
         

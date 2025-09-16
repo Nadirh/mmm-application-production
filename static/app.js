@@ -453,44 +453,7 @@ class MMMApp {
             return;
         }
         
-        // Create parameter display section
-        const parameterHtml = Object.keys(channel_alphas).map(channel => {
-            const alpha = channel_alphas[channel]?.toFixed(2) || 'N/A';
-            const beta = channel_betas[channel]?.toFixed(2) || 'N/A';
-            const r = channel_rs[channel]?.toFixed(2) || 'N/A';
-            
-            return `
-                <div class="parameter-card">
-                    <div class="parameter-channel">${this.formatChannelName(channel)}</div>
-                    <div class="parameter-values">
-                        <div class="parameter-item">
-                            <span class="parameter-label">Alpha (Strength):</span>
-                            <span class="parameter-value">${alpha}</span>
-                        </div>
-                        <div class="parameter-item">
-                            <span class="parameter-label">Beta (Saturation):</span>
-                            <span class="parameter-value">${beta}</span>
-                        </div>
-                        <div class="parameter-item">
-                            <span class="parameter-label">R (Adstock):</span>
-                            <span class="parameter-value">${r}</span>
-                        </div>
-                    </div>
-                </div>
-            `;
-        }).join('');
-        
-        // Add parameters section to results
-        const parametersSection = `
-            <div style="margin-top: 30px;">
-                <h3 style="color: #333; margin-bottom: 20px;">📊 Optimized Parameters</h3>
-                <div class="parameters-grid">
-                    ${parameterHtml}
-                </div>
-            </div>
-        `;
-        
-        document.getElementById('results-grid').insertAdjacentHTML('afterend', parametersSection);
+        // Parameters are now displayed in the equations section, removing duplicate display
     }
 
     displayResponseCurveEquations(parameters, confidenceIntervals = {}) {
@@ -576,7 +539,7 @@ class MMMApp {
 
             // Generate the actual charts after DOM elements are created
             setTimeout(() => {
-                this.generateResponseCurveCharts(parameters, confidenceIntervals);
+                this.generateResponseCurveCharts(parameters, this.runId);
             }, 100);
         } else {
             console.error('Could not find results-grid element');
@@ -740,11 +703,371 @@ class MMMApp {
         `;
     }
 
-    generateResponseCurveCharts(parameters, confidenceIntervals = {}) {
-        console.log('🚀 Generating response curve charts with parameters:', parameters);
-        console.log('📊 Confidence intervals:', confidenceIntervals);
-        const { channel_alphas, channel_betas, channel_rs } = parameters;
+    renderResponseCurvesFromAPI(data) {
+        console.log('📊 Rendering response curves from API data:', data);
 
+        const responseCurves = data.response_curves;
+        const avgDailySpend = data.avg_daily_spend_28_days || {};
+        const spendCorrelations = data.spend_correlations || {};
+
+        Object.keys(responseCurves).forEach(channel => {
+            const curveData = responseCurves[channel];
+            const spendLevels = curveData.spend_levels || [];
+            const profits = curveData.incremental_profits || [];
+            const confidenceIntervals = curveData.confidence_intervals;
+            const avgSpend = avgDailySpend[channel];
+
+            console.log(`📊 ${channel} - Confidence intervals:`, confidenceIntervals);
+            console.log(`📊 ${channel} - 28-day avg spend: $${avgSpend?.toFixed(2) || 'N/A'}`);
+
+            // Find the point closest to the 28-day average for annotation
+            let avgSpendIndex = -1;
+            if (avgSpend && avgSpend > 0) {
+                avgSpendIndex = spendLevels.findIndex(spend => spend >= avgSpend);
+                if (avgSpendIndex === -1) avgSpendIndex = spendLevels.length - 1;
+            }
+
+            // Prepare datasets
+            const datasets = [{
+                label: 'Lifetime Incremental Profit',
+                data: profits,
+                borderColor: '#2d5aa0',
+                backgroundColor: 'rgba(45, 90, 160, 0.1)',
+                borderWidth: 3,
+                fill: false,
+                tension: 0.4
+            }];
+
+            // Add confidence interval bands if available
+            if (confidenceIntervals && confidenceIntervals.lower && confidenceIntervals.upper) {
+                console.log(`✅ Adding confidence intervals for ${channel}`);
+
+                datasets.push({
+                    label: '95% Confidence Interval (Upper)',
+                    data: confidenceIntervals.upper,
+                    borderColor: 'rgba(45, 90, 160, 0.4)',
+                    backgroundColor: 'transparent',
+                    borderWidth: 2,
+                    borderDash: [5, 5],
+                    fill: false,
+                    tension: 0.4,
+                    pointRadius: 0
+                });
+
+                datasets.push({
+                    label: '95% Confidence Interval (Lower)',
+                    data: confidenceIntervals.lower,
+                    borderColor: 'rgba(45, 90, 160, 0.4)',
+                    backgroundColor: 'rgba(45, 90, 160, 0.1)',
+                    borderWidth: 2,
+                    borderDash: [5, 5],
+                    fill: 1, // Fill to the upper bound dataset
+                    tension: 0.4,
+                    pointRadius: 0
+                });
+            } else {
+                console.log(`⚠️ No confidence intervals found for ${channel}`);
+            }
+
+            // Add vertical line for 28-day average if available
+            const annotations = [];
+            if (avgSpend && avgSpend > 0 && avgSpendIndex >= 0) {
+                annotations.push({
+                    type: 'line',
+                    mode: 'vertical',
+                    scaleID: 'x',
+                    value: avgSpendIndex,
+                    borderColor: 'rgba(255, 99, 132, 0.8)',
+                    borderWidth: 2,
+                    borderDash: [10, 5],
+                    label: {
+                        content: `28-day avg: $${avgSpend.toFixed(0)}`,
+                        enabled: true,
+                        position: 'top'
+                    }
+                });
+            }
+
+            // Create chart
+            const ctx = document.getElementById(`chart-${channel}`);
+            if (ctx) {
+                new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: spendLevels.map(s => `$${Math.round(s).toLocaleString()}`),
+                        datasets: datasets
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: {
+                            intersect: false,
+                            mode: 'index'
+                        },
+                        plugins: {
+                            title: {
+                                display: true,
+                                text: `${this.formatChannelName(channel)} Response Curve${avgSpend ? ` (28-day avg: $${avgSpend.toFixed(0)}/day)` : ''}`,
+                                font: { size: 16, weight: 'bold' }
+                            },
+                            legend: {
+                                display: true,
+                                position: 'bottom',
+                                labels: {
+                                    filter: function(legendItem, chartData) {
+                                        // Only show main curve and confidence interval labels (simplified)
+                                        return legendItem.text !== '95% Confidence Interval (Upper)';
+                                    },
+                                    generateLabels: function(chart) {
+                                        const labels = Chart.defaults.plugins.legend.labels.generateLabels(chart);
+                                        return labels.map(label => {
+                                            if (label.text === '95% Confidence Interval (Lower)') {
+                                                label.text = '95% Confidence Interval';
+                                            }
+                                            return label;
+                                        });
+                                    }
+                                }
+                            },
+                            annotation: annotations.length > 0 ? {
+                                annotations: annotations
+                            } : undefined
+                        },
+                        scales: {
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: 'Daily Spend ($)'
+                                }
+                            },
+                            y: {
+                                title: {
+                                    display: true,
+                                    text: 'Lifetime Incremental Profit ($)'
+                                },
+                                min: 0,  // Never show negative values
+                                ticks: {
+                                    callback: function(value) {
+                                        return '$' + Math.round(value).toLocaleString();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+
+                console.log(`✅ Chart created for ${channel} with ${confidenceIntervals ? 'confidence intervals' : 'no confidence intervals'}`);
+
+                // Add correlations summary box after the chart
+                const spendCorr = spendCorrelations[channel];
+
+                if (spendCorr !== undefined) {
+                    const correlationHTML = `
+                        <div style="background: #6f42c1; color: white; padding: 15px; margin-top: 10px; border-radius: 8px; font-size: 0.9em;">
+                            <div style="font-weight: bold; margin-bottom: 8px; text-align: center;">📊 Spend Correlation with Profit</div>
+                            <div style="text-align: center;">
+                                <div style="font-size: 1.2em; font-weight: bold;">${Math.round(spendCorr * 100)}%</div>
+                            </div>
+                        </div>
+                    `;
+
+                    // Insert the correlation box after the chart canvas
+                    ctx.parentElement.insertAdjacentHTML('afterend', correlationHTML);
+                }
+            } else {
+                console.error(`❌ Could not find canvas element for ${channel}`);
+            }
+        });
+    }
+
+    renderMarginalROICharts(data) {
+        console.log('📈 Rendering marginal ROI charts');
+        console.log('📊 Response curves data:', data.response_curves);
+        console.log('💰 Average daily spend data:', data.avg_daily_spend_28_days);
+
+        const responseCurves = data.response_curves;
+        const avgDailySpend = data.avg_daily_spend_28_days || {};
+
+        // Add section header for marginal ROI charts
+        const chartContainer = document.getElementById('response-curves-charts');
+        if (!chartContainer) {
+            console.error('❌ Could not find response-curves-charts container');
+            return;
+        }
+        console.log('✅ Found chart container, adding marginal ROI section');
+
+        const marginalSection = document.createElement('div');
+        marginalSection.innerHTML = `
+            <div style="margin-top: 40px; margin-bottom: 20px;">
+                <h3 style="color: #333; font-size: 1.5em; margin-bottom: 10px;">📊 Marginal ROI by Channel</h3>
+                <p style="color: #666; font-size: 0.9em; margin-bottom: 20px;">
+                    Shows the return on investment for the next dollar spent. Values above 1.0 indicate profitable spend.
+                </p>
+            </div>
+            <div id="marginal-roi-charts" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 20px;"></div>
+        `;
+        chartContainer.appendChild(marginalSection);
+
+        const marginalChartsContainer = document.getElementById('marginal-roi-charts');
+
+        Object.keys(responseCurves).forEach(channel => {
+            const curveData = responseCurves[channel];
+            const spendLevels = curveData.spend_levels || [];
+            const marginalRoas = curveData.marginal_roas || [];
+            const currentSpend = avgDailySpend[channel] || 0;
+
+            // Create chart container
+            const chartDiv = document.createElement('div');
+            chartDiv.style.cssText = 'background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 20px;';
+
+            const canvas = document.createElement('canvas');
+            canvas.id = `marginal-roi-chart-${channel}`;
+            canvas.width = 400;
+            canvas.height = 300;
+
+            chartDiv.appendChild(canvas);
+            marginalChartsContainer.appendChild(chartDiv);
+
+            const ctx = canvas.getContext('2d');
+
+            // Find current position on the curve
+            let currentROI = 0;
+            let currentIndex = -1;
+            if (currentSpend > 0) {
+                // Find closest spend level to current spend
+                currentIndex = spendLevels.findIndex(spend => spend >= currentSpend);
+                if (currentIndex === -1) currentIndex = spendLevels.length - 1;
+                if (currentIndex >= 0 && currentIndex < marginalRoas.length) {
+                    currentROI = marginalRoas[currentIndex];
+                }
+            }
+
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: spendLevels,
+                    datasets: [
+                        {
+                            label: 'Marginal ROI',
+                            data: marginalRoas,
+                            borderColor: '#007bff',
+                            backgroundColor: 'rgba(0, 123, 255, 0.1)',
+                            borderWidth: 2,
+                            fill: false,
+                            pointRadius: 0,
+                            pointHoverRadius: 6
+                        },
+                        {
+                            label: 'Breakeven Line (ROI = 1)',
+                            data: spendLevels.map(() => 1.0),
+                            borderColor: '#dc3545',
+                            backgroundColor: 'transparent',
+                            borderWidth: 2,
+                            borderDash: [5, 5],
+                            fill: false,
+                            pointRadius: 0,
+                            pointHoverRadius: 0
+                        },
+                        ...(currentIndex >= 0 ? [{
+                            label: 'Current Position',
+                            data: [{x: currentSpend, y: currentROI}],
+                            backgroundColor: '#28a745',
+                            borderColor: '#28a745',
+                            pointRadius: 8,
+                            pointHoverRadius: 10,
+                            showLine: false
+                        }] : [])
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: `${channel} - Marginal ROI`,
+                            font: { size: 16, weight: 'bold' }
+                        },
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                            callbacks: {
+                                label: function(context) {
+                                    if (context.datasetIndex === 0) {
+                                        return `Marginal ROI: ${context.parsed.y.toFixed(2)}`;
+                                    } else if (context.datasetIndex === 1) {
+                                        return 'Breakeven';
+                                    } else {
+                                        return `Current: ${context.parsed.y.toFixed(2)} ROI`;
+                                    }
+                                },
+                                title: function(context) {
+                                    return `Daily Spend: $${context[0].parsed.x.toFixed(0)}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            type: 'linear',
+                            position: 'bottom',
+                            title: {
+                                display: true,
+                                text: 'Daily Spend ($)'
+                            },
+                            grid: {
+                                alpha: 0.3
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Marginal ROI'
+                            },
+                            grid: {
+                                alpha: 0.3
+                            },
+                            min: 0
+                        }
+                    },
+                    interaction: {
+                        mode: 'nearest',
+                        axis: 'x',
+                        intersect: false
+                    }
+                }
+            });
+
+            console.log(`✅ Marginal ROI chart created for ${channel}, current spend: $${currentSpend.toFixed(0)}, current ROI: ${currentROI.toFixed(2)}`);
+        });
+    }
+
+    async generateResponseCurveCharts(parameters, runId) {
+        console.log('🚀 Generating response curve charts with parameters:', parameters);
+        console.log('📊 Run ID for API call:', runId);
+
+        // Try to fetch actual response curves from API with confidence intervals
+        try {
+            const response = await fetch(`${this.apiUrl}/model/response-curves/${runId}`);
+            const data = await response.json();
+
+            if (response.ok && data.response_curves) {
+                console.log('✅ Fetched response curves with confidence intervals from API');
+                this.renderResponseCurvesFromAPI(data);
+                console.log('🚀 About to render marginal ROI charts...');
+                this.renderMarginalROICharts(data);
+                return;
+            }
+        } catch (error) {
+            console.warn('⚠️ Could not fetch response curves from API, falling back to manual generation:', error);
+        }
+
+        // Fallback to manual generation
+        const { channel_alphas, channel_betas, channel_rs } = parameters;
         Object.keys(channel_alphas).forEach(channel => {
             const alpha = channel_alphas[channel];
             const beta = channel_betas[channel];
