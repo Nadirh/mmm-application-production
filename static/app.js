@@ -522,10 +522,10 @@ class MMMApp {
                     <div class="equation-channel">${this.formatChannelName(channel)}</div>
                     <div class="equation-formula">
                         <div class="equation-text">
-                            Profit = ${alpha.toFixed(2)} × [adstocked_spend^${beta.toFixed(2)}]
+                            Lifetime Profit = ${alpha.toFixed(2)} × [(Daily Spend / ${(1-r).toFixed(2)})^${beta.toFixed(2)}]
                         </div>
                         <div class="equation-explanation">
-                            Where adstocked_spend[t] = S[t] + ${r.toFixed(2)} × adstocked_spend[t-1] (with adstocked_spend[0] = S[0])
+                            This shows lifetime incremental profit from sustained daily spending (includes carryover effects)
                         </div>
                     </div>
                     <div class="equation-parameters">
@@ -557,8 +557,8 @@ class MMMApp {
             <div style="margin-top: 30px; border: 3px solid #ff0000; padding: 20px; background: #fff;">
                 <h2 style="color: #ff0000; margin-bottom: 20px; font-size: 2rem;">🧮 RESPONSE CURVE EQUATIONS</h2>
                 <div style="background: #ffeeee; padding: 15px; border-radius: 8px; margin-bottom: 20px; font-style: italic; color: #333; border: 2px solid #ff0000;">
-                    <strong>These equations show how incremental profit responds to spending on each channel:</strong><br>
-                    Profit = α × [adstocked_spend^β] where adstocked_spend captures carryover effects from previous periods
+                    <strong>These equations show lifetime incremental profit from sustained daily spending on each channel:</strong><br>
+                    Lifetime Profit = α × [(Daily Spend ÷ (1-r))^β] where carryover effects are built into the formula
                 </div>
                 <div class="equations-grid">
                     ${equationHtml}
@@ -731,7 +731,7 @@ class MMMApp {
                 <h2 style="color: #28a745; margin-bottom: 20px; font-size: 2rem;">📈 RESPONSE CURVES</h2>
                 <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px; font-style: italic; color: #333; border: 2px solid #28a745;">
                     <strong>These charts show how incremental profit responds to daily spend for each channel.</strong><br>
-                    X-axis: Daily Spend ($) | Y-axis: Incremental Daily Profit ($)
+                    X-axis: Daily Spend ($) | Y-axis: Lifetime Incremental Profit ($)
                 </div>
                 <div class="response-curves-grid">
                     ${curvesHtml}
@@ -787,7 +787,7 @@ class MMMApp {
 
             // Prepare datasets
             const datasets = [{
-                label: 'Incremental Profit',
+                label: 'Lifetime Incremental Profit',
                 data: profits,
                 borderColor: '#2d5aa0',
                 backgroundColor: 'rgba(45, 90, 160, 0.1)',
