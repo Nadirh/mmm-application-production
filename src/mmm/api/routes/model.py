@@ -713,3 +713,51 @@ async def delete_training_run(run_id: str) -> Dict[str, str]:
     logger.info("Training run deleted", run_id=run_id)
     
     return {"status": "deleted", "run_id": run_id}
+
+
+@router.post("/training/force-cancel/{run_id}")
+async def force_cancel_training(run_id: str, db: AsyncSession = Depends(get_db)) -> Dict[str, str]:
+    """Force cancel a stuck training run (admin endpoint for orphaned runs)."""
+    try:
+        # Update database directly without checking in-memory state
+        from sqlalchemy import update
+        from mmm.database.models import TrainingRun
+
+        result = await db.execute(
+            update(TrainingRun)
+            .where(TrainingRun.id == run_id)
+            .values(
+                status="cancelled",
+                end_time=datetime.now(UTC),
+                current_progress={"type": "cancelled", "message": "Training force-cancelled (system restart)"},
+                error_message="Training was interrupted by system restart"
+            )
+        )
+
+        if result.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Training run not found in database")
+
+        await db.commit()
+
+        # Clean up in-memory state if exists
+        if run_id in training_runs:
+            training_runs[run_id]["status"] = "cancelled"
+            training_runs[run_id]["cancelled"] = True
+
+        logger.info("Training run force-cancelled", run_id=run_id)
+
+        # Notify via WebSocket if connected
+        await connection_manager.send_progress_update(run_id, {
+            "type": "cancelled",
+            "message": "Training force-cancelled (system restart)",
+            "status": "cancelled"
+        })
+
+        return {"message": "Training run force-cancelled successfully", "run_id": run_id}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to force-cancel training", run_id=run_id, error=str(e))
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to force-cancel training: {str(e)}")
