@@ -56,4 +56,4 @@ Thumbs.db
 .aws/
 
 # Cache
-.cache/
+.cache/__pycache__/
