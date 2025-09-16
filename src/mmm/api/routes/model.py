@@ -241,8 +241,10 @@ async def train_model(
         raise HTTPException(status_code=404, detail="Upload session not found")
     
     # Validate data requirements before starting training
-    data_summary = session.get("data_summary", {})
-    total_days = data_summary.get("total_days", 0)
+    data_summary = session.get("data_summary")
+    if not data_summary:
+        raise HTTPException(status_code=400, detail="No data summary found in upload session")
+    total_days = data_summary.total_days
     
     # Get training configuration with defaults
     config = config or {}
