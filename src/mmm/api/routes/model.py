@@ -96,10 +96,38 @@ async def train_model_background(upload_id: str, run_id: str, config: Dict[str, 
             await progress_tracker.update_progress("cancelled", {"message": "Training cancelled by user"})
             return
         
-        # Train model with periodic cancellation checks
+        # Train model with periodic cancellation checks and timeout
         try:
-            results = model.fit(processed_df, channel_grids, progress_callback, 
-                              cancellation_check=lambda: training_runs[run_id].get("cancelled", False))
+            training_timeout = 1800  # 30 minutes timeout
+            results = await asyncio.wait_for(
+                asyncio.to_thread(
+                    model.fit,
+                    processed_df,
+                    channel_grids,
+                    progress_callback,
+                    lambda: training_runs[run_id].get("cancelled", False)
+                ),
+                timeout=training_timeout
+            )
+        except asyncio.TimeoutError:
+            # Training timed out
+            error_msg = f"Training timed out after {training_timeout/60:.1f} minutes"
+            logger.error("Training timeout", run_id=run_id, timeout_minutes=training_timeout/60)
+            await progress_tracker.update_progress("failed", {"error": error_msg})
+            # Update database status to failed
+            async for db_session in db_manager.get_session():
+                try:
+                    from sqlalchemy import update
+                    from mmm.database.models import TrainingRun
+                    await db_session.execute(
+                        update(TrainingRun)
+                        .where(TrainingRun.id == run_id)
+                        .values(status="failed", error_message=error_msg, current_progress={"type": "failed", "error": error_msg})
+                    )
+                    await db_session.commit()
+                except Exception as db_error:
+                    logger.error("Failed to update timeout status in database", run_id=run_id, error=str(db_error))
+            return
         except InterruptedError as e:
             # Training was cancelled
             logger.info("Training cancelled during model fitting", run_id=run_id, error=str(e))
