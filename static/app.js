@@ -1,5 +1,5 @@
-// MMM Frontend Application v1.9.22 with response curve charts and 2 decimal places
-console.log('🚀 MMM App Loading with Equation Debug');
+// MMM Frontend Application v1.9.61 with cleaned up Marginal ROI section and fixed budget allocation
+console.log('🚀 MMM App v1.9.61 Loading - CLEANED MARGINAL ROI & FIXED BUDGET ALLOCATION');
 
 class MMMApp {
     constructor() {
@@ -10,6 +10,9 @@ class MMMApp {
 
         // Add VISIBLE indicator that JS is working
         this.addVisibleDebugIndicator();
+
+        // Configure Chart.js to prevent automatic currency formatting
+        this.configureChartDefaults();
 
         this.initializeEventListeners();
     }
@@ -30,7 +33,7 @@ class MMMApp {
             z-index: 9999;
             font-size: 16px;
         `;
-        banner.textContent = '🚀 JS v1.9.22 LOADED - CHARTS & 2 DECIMAL PLACES';
+        banner.textContent = '🚀 JS v1.9.61 LOADED - CLEANED MARGINAL ROI & FIXED BUDGET';
         document.body.appendChild(banner);
 
         // Remove after 5 seconds
@@ -39,6 +42,19 @@ class MMMApp {
                 banner.parentNode.removeChild(banner);
             }
         }, 5000);
+    }
+
+    configureChartDefaults() {
+        // Configure Chart.js global defaults to prevent automatic currency formatting
+        console.log('🔧 Configuring Chart.js defaults to prevent currency formatting');
+
+        if (typeof Chart !== 'undefined') {
+            // Disable any automatic formatting
+            Chart.defaults.locale = 'en-US';
+            console.log('✅ Chart.js global configuration applied');
+        } else {
+            console.warn('⚠️ Chart.js not yet loaded, cannot configure defaults');
+        }
     }
 
     initializeEventListeners() {
@@ -357,8 +373,6 @@ class MMMApp {
                 if (response.ok) {
                     console.log('Results fetched successfully:', results);
                     this.displayResults(results);
-                    // Fetch marginal ROI data separately
-                    await this.fetchAndDisplayMarginalROI();
                 } else {
                     console.error('Failed to fetch results:', results);
                     console.error('Response status:', response.status);
@@ -440,10 +454,7 @@ class MMMApp {
             this.displayTestEquation();
         }
 
-        // Display marginal ROI if available
-        if (results.marginal_roi && results.marginal_roi.marginal_roi_by_channel) {
-            this.displayMarginalROI(results.marginal_roi);
-        }
+        // Marginal ROI will be displayed after response curves are rendered
     }
 
     displayParameters(parameters) {
@@ -529,13 +540,24 @@ class MMMApp {
             </div>
         `;
 
-        // Insert after the results grid
-        console.log('Inserting equations section...');
+        // Insert sections in correct order: Response Curves FIRST, then Equations
+        console.log('🔧 Inserting sections in correct order...');
         const resultsGrid = document.getElementById('results-grid');
         if (resultsGrid) {
+            // Insert response curves first (this will appear immediately after results-grid)
             resultsGrid.insertAdjacentHTML('afterend', responseCurvesSection);
-            resultsGrid.insertAdjacentHTML('afterend', equationsSection);
-            console.log('Response curves and equations sections inserted successfully');
+            console.log('✅ Response curves section inserted first');
+
+            // Insert equations second (this will appear after response curves)
+            const responseCurvesContainer = document.getElementById('response-curves-charts');
+            if (responseCurvesContainer && responseCurvesContainer.parentElement) {
+                responseCurvesContainer.parentElement.insertAdjacentHTML('afterend', equationsSection);
+                console.log('✅ Equations section inserted after response curves');
+            } else {
+                // Fallback: insert after results grid if response curves container not found
+                resultsGrid.insertAdjacentHTML('afterend', equationsSection);
+                console.log('⚠️ Equations section inserted after results grid (fallback)');
+            }
 
             // Generate the actual charts after DOM elements are created
             setTimeout(() => {
@@ -587,7 +609,7 @@ class MMMApp {
                     <div class="roi-values">
                         <div class="roi-item">
                             <span class="roi-label">Marginal ROI:</span>
-                            <span class="roi-value">$${formattedROI}</span>
+                            <span class="roi-value">${formattedROI}</span>
                         </div>
                         <div class="roi-item">
                             <span class="roi-label">Baseline Spend (30-day avg):</span>
@@ -600,7 +622,7 @@ class MMMApp {
                         </div>
                         ` : ''}
                         <div class="roi-interpretation">
-                            Each additional $1/day generates $${formattedROI} more profit
+                            Each additional $1/day generates ${formattedROI}x more profit
                         </div>
                     </div>
                 </div>
@@ -615,9 +637,7 @@ class MMMApp {
             <div style="margin-top: 30px;">
                 <h3 style="color: #333; margin-bottom: 20px;">💰 Marginal ROI by Channel</h3>
                 <div class="interpretation-box" style="background: #f5f5f5; padding: 15px; border-radius: 8px; margin-bottom: 20px; font-style: italic; color: #666;">
-                    ${interpretation.description} (${interpretation.units})
-                    <br><strong>Channels ranked by efficiency - highest ROI first</strong>
-                    ${interpretation.baseline_note ? `<br><br><em>${interpretation.baseline_note}</em>` : ''}
+                    ${interpretation.baseline_note ? `<em>${interpretation.baseline_note}</em>` : ''}
                 </div>
                 <div class="marginal-roi-grid">
                     ${marginalROIHtml}
@@ -626,19 +646,12 @@ class MMMApp {
             </div>
         `;
         
-        // Insert after the parameters section if it exists, otherwise after the results grid
-        const parametersGrid = document.querySelector('.parameters-grid');
-        if (parametersGrid && parametersGrid.parentElement) {
-            parametersGrid.parentElement.insertAdjacentHTML('afterend', marginalROISection);
-        } else {
-            document.getElementById('results-grid').insertAdjacentHTML('afterend', marginalROISection);
-        }
+        // Store the marginal ROI section HTML for later insertion (don't insert now)
+        this.marginalROISection = marginalROISection;
 
         // Generate mROI curves after DOM elements are created
         setTimeout(() => {
             this.generateMROICharts(marginal_roi_by_channel, baseline_spend_per_day);
-            console.log('📊 About to add Profit Maximizer. mROI data:', Object.keys(marginal_roi_by_channel));
-            this.addProfitMaximizer(marginal_roi_by_channel, baseline_spend_per_day);
         }, 100);
     }
 
@@ -1031,7 +1044,18 @@ class MMMApp {
                             grid: {
                                 alpha: 0.3
                             },
-                            min: 0
+                            min: 0,
+                            ticks: {
+                                callback: function(value, index, values) {
+                                    // Debug: Log the value being formatted
+                                    console.log(`🔧 Y-axis tick formatting: ${value} -> ${Number(value).toFixed(2)}`);
+                                    // Ensure we return plain numbers, not currency
+                                    const formatted = Number(value).toFixed(2);
+                                    return formatted;
+                                },
+                                // Disable any automatic number formatting
+                                maxTicksLimit: 10
+                            }
                         }
                     },
                     interaction: {
@@ -1046,9 +1070,179 @@ class MMMApp {
         });
     }
 
+    renderMarginalROIChartsManual(parameters) {
+        console.log('📈 Rendering marginal ROI charts (manual generation)');
+
+        const { channel_alphas, channel_betas, channel_rs } = parameters;
+
+        // Add section header for marginal ROI charts
+        const chartContainer = document.getElementById('response-curves-charts');
+        if (!chartContainer) {
+            console.error('❌ Could not find response-curves-charts container');
+            return;
+        }
+        console.log('✅ Found chart container, adding marginal ROI section (manual)');
+
+        const marginalSection = document.createElement('div');
+        marginalSection.innerHTML = `
+            <div style="margin-top: 40px; margin-bottom: 20px;">
+                <h3 style="color: #333; font-size: 1.5em; margin-bottom: 10px;">📊 Marginal ROI by Channel</h3>
+                <p style="color: #666; font-size: 0.9em; margin-bottom: 20px;">
+                    Shows the return on investment for the next dollar spent. Values above 1.0 indicate profitable spend.
+                </p>
+            </div>
+            <div id="marginal-roi-charts-manual" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 20px;"></div>
+        `;
+        chartContainer.appendChild(marginalSection);
+
+        const marginalChartsContainer = document.getElementById('marginal-roi-charts-manual');
+
+        Object.keys(channel_alphas).forEach(channel => {
+            const alpha = channel_alphas[channel];
+            const beta = channel_betas[channel];
+            const r = channel_rs[channel];
+
+            // Generate spend levels and marginal ROI manually
+            const maxSpend = 10000; // Same as in manual generation
+            const spendLevels = [];
+            const marginalRoas = [];
+
+            for (let spend = 0; spend <= maxSpend; spend += maxSpend / 100) {
+                spendLevels.push(spend);
+
+                // Calculate marginal ROI (derivative of the response function)
+                if (spend > 0) {
+                    const adstockFactor = 1 / (1 - r);
+                    const marginalProfit = alpha * beta * Math.pow(adstockFactor, beta) * Math.pow(spend, beta - 1);
+                    const marginalROI = marginalProfit / spend;
+                    marginalRoas.push(Math.max(0, marginalROI)); // Ensure non-negative
+                } else {
+                    marginalRoas.push(0);
+                }
+            }
+
+            // Create chart container
+            const chartDiv = document.createElement('div');
+            chartDiv.style.cssText = 'background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 20px;';
+
+            const canvas = document.createElement('canvas');
+            canvas.id = `marginal-roi-chart-manual-${channel}`;
+            canvas.width = 400;
+            canvas.height = 300;
+
+            chartDiv.appendChild(canvas);
+            marginalChartsContainer.appendChild(chartDiv);
+
+            const ctx = canvas.getContext('2d');
+
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: spendLevels,
+                    datasets: [
+                        {
+                            label: 'Marginal ROI',
+                            data: marginalRoas,
+                            borderColor: '#007bff',
+                            backgroundColor: 'rgba(0, 123, 255, 0.1)',
+                            borderWidth: 2,
+                            fill: false,
+                            pointRadius: 0,
+                            pointHoverRadius: 6
+                        },
+                        {
+                            label: 'Breakeven Line (ROI = 1)',
+                            data: spendLevels.map(() => 1.0),
+                            borderColor: '#dc3545',
+                            backgroundColor: 'transparent',
+                            borderWidth: 2,
+                            borderDash: [5, 5],
+                            fill: false,
+                            pointRadius: 0,
+                            pointHoverRadius: 0
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: `${channel} - Marginal ROI`,
+                            font: { size: 16, weight: 'bold' }
+                        },
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                            callbacks: {
+                                label: function(context) {
+                                    if (context.datasetIndex === 0) {
+                                        return `Marginal ROI: ${context.parsed.y.toFixed(2)}`;
+                                    } else {
+                                        return 'Breakeven';
+                                    }
+                                },
+                                title: function(context) {
+                                    return `Daily Spend: $${context[0].parsed.x.toFixed(0)}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            type: 'linear',
+                            position: 'bottom',
+                            title: {
+                                display: true,
+                                text: 'Daily Spend ($)'
+                            },
+                            grid: {
+                                alpha: 0.3
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Marginal ROI'
+                            },
+                            grid: {
+                                alpha: 0.3
+                            },
+                            min: 0,
+                            ticks: {
+                                callback: function(value, index, values) {
+                                    // Debug: Log the value being formatted
+                                    console.log(`🔧 Y-axis tick formatting: ${value} -> ${Number(value).toFixed(2)}`);
+                                    // Ensure we return plain numbers, not currency
+                                    const formatted = Number(value).toFixed(2);
+                                    return formatted;
+                                },
+                                // Disable any automatic number formatting
+                                maxTicksLimit: 10
+                            }
+                        }
+                    },
+                    interaction: {
+                        mode: 'nearest',
+                        axis: 'x',
+                        intersect: false
+                    }
+                }
+            });
+
+            console.log(`✅ Manual marginal ROI chart created for ${channel}`);
+        });
+    }
+
     async generateResponseCurveCharts(parameters, runId) {
-        console.log('🚀 Generating response curve charts with parameters:', parameters);
-        console.log('📊 Run ID for API call:', runId);
+        console.log('🚀 [FLOW] generateResponseCurveCharts started');
+        console.log('📊 [FLOW] Parameters:', parameters);
+        console.log('📊 [FLOW] Run ID:', runId);
 
         // Try to fetch actual response curves from API with confidence intervals
         try {
@@ -1056,10 +1250,29 @@ class MMMApp {
             const data = await response.json();
 
             if (response.ok && data.response_curves) {
-                console.log('✅ Fetched response curves with confidence intervals from API');
+                console.log('✅ [FLOW] Fetched response curves from API - starting sequential rendering');
+
+                // 1. First: Render response curves
+                console.log('📊 [FLOW] Step 1: Rendering response curves');
                 this.renderResponseCurvesFromAPI(data);
-                console.log('🚀 About to render marginal ROI charts...');
+
+                // 2. Second: Fetch marginal ROI data (this stores the HTML but doesn't insert)
+                console.log('📊 [FLOW] Step 2: Fetching marginal ROI data');
+                await this.fetchAndDisplayMarginalROI();
+
+                // 3. Third: Insert the marginal ROI section after response curves
+                console.log('📊 [FLOW] Step 3: Inserting marginal ROI section');
+                this.insertMarginalROISection();
+
+                // 4. Fourth: Render marginal ROI charts
+                console.log('📊 [FLOW] Step 4: Rendering marginal ROI charts');
                 this.renderMarginalROICharts(data);
+
+                // 5. Fifth: Add Profit Maximizer at the very end
+                console.log('📊 [FLOW] Step 5: Adding Profit Maximizer');
+                await this.addProfitMaximizerAtEnd();
+
+                console.log('✅ [FLOW] Complete dashboard sequence finished');
                 return;
             }
         } catch (error) {
@@ -1067,6 +1280,7 @@ class MMMApp {
         }
 
         // Fallback to manual generation
+        console.log('📊 [FLOW] Using manual generation fallback');
         const { channel_alphas, channel_betas, channel_rs } = parameters;
         Object.keys(channel_alphas).forEach(channel => {
             const alpha = channel_alphas[channel];
@@ -1219,6 +1433,24 @@ class MMMApp {
                 console.error(`❌ Could not find canvas element for ${channel}`);
             }
         });
+
+        // Generate marginal ROI charts for manual generation path
+        console.log('📊 [FLOW] Manual Step 1: Rendering marginal ROI charts');
+        this.renderMarginalROIChartsManual(parameters);
+
+        // Fetch marginal ROI data (stores HTML but doesn't insert)
+        console.log('📊 [FLOW] Manual Step 2: Fetching marginal ROI data');
+        await this.fetchAndDisplayMarginalROI();
+
+        // Insert the marginal ROI section after response curves
+        console.log('📊 [FLOW] Manual Step 3: Inserting marginal ROI section');
+        this.insertMarginalROISection();
+
+        // Add Profit Maximizer at the very end (manual path)
+        console.log('📊 [FLOW] Manual Step 4: Adding Profit Maximizer');
+        await this.addProfitMaximizerAtEnd();
+
+        console.log('✅ [FLOW] Manual generation sequence finished');
     }
 
     calculateTimeSeriesAdstock(dailySpend, r, numDays = 30) {
@@ -1455,6 +1687,50 @@ class MMMApp {
         }
     }
 
+    async addProfitMaximizerAtEnd() {
+        console.log('🎯 Adding Profit Maximizer at the end');
+        try {
+            const response = await fetch(`${this.apiUrl}/model/marginal-roi/${this.runId}`);
+            const marginalROIData = await response.json();
+
+            if (response.ok && marginalROIData.marginal_roi_by_channel) {
+                this.addProfitMaximizer(marginalROIData.marginal_roi_by_channel, marginalROIData.baseline_spend_per_day);
+            } else {
+                console.warn('Marginal ROI data not available for Profit Maximizer:', marginalROIData);
+            }
+        } catch (error) {
+            console.warn('Error fetching marginal ROI for Profit Maximizer:', error);
+        }
+    }
+
+    insertMarginalROISection() {
+        console.log('📊 Inserting marginal ROI section after response curves');
+        if (this.marginalROISection) {
+            // Find the response curves section by its CSS class
+            const responseCurvesSection = document.querySelector('.response-curves-section');
+            if (responseCurvesSection) {
+                responseCurvesSection.insertAdjacentHTML('afterend', this.marginalROISection);
+                console.log('✅ Marginal ROI section inserted after response curves section');
+            } else {
+                // Fallback: find by the equations grid and insert marginal ROI after it
+                const equationsGrid = document.querySelector('.equations-grid');
+                if (equationsGrid && equationsGrid.parentElement) {
+                    equationsGrid.parentElement.insertAdjacentHTML('afterend', this.marginalROISection);
+                    console.log('✅ Marginal ROI section inserted after equations section (fallback)');
+                } else {
+                    // Ultimate fallback: insert after results grid
+                    const resultsGrid = document.getElementById('results-grid');
+                    if (resultsGrid) {
+                        resultsGrid.insertAdjacentHTML('afterend', this.marginalROISection);
+                        console.log('⚠️ Marginal ROI section inserted after results grid (ultimate fallback)');
+                    }
+                }
+            }
+        } else {
+            console.warn('⚠️ No marginal ROI section HTML stored');
+        }
+    }
+
     generateProfitMaximizerSection(marginalROIByChannel, baselineSpend) {
         const channels = Object.keys(marginalROIByChannel);
 
@@ -1575,7 +1851,7 @@ class MMMApp {
         // Use smaller increments for more precise allocation
         const incrementSize = Math.max(1, remainingBudget / 200); // Smaller increments
 
-        while (remainingBudget > incrementSize) {
+        while (remainingBudget > 0.01) { // Use small threshold instead of incrementSize
             let bestChannel = null;
             let bestMarginalROI = 0;
 
@@ -1612,15 +1888,12 @@ class MMMApp {
                 const allocatableChannels = viableChannels.filter(channel =>
                     allocation[channel] < constraints[channel].max);
 
-                if (allocatableChannels.length > 0 && remainingBudget > 0) {
-                    const perChannelRemainder = remainingBudget / allocatableChannels.length;
-                    allocatableChannels.forEach(channel => {
-                        const increase = Math.min(perChannelRemainder,
-                            constraints[channel].max - allocation[channel],
-                            remainingBudget);
-                        allocation[channel] += increase;
-                        remainingBudget -= increase;
-                    });
+                if (allocatableChannels.length > 0 && remainingBudget > 0.01) {
+                    // Allocate all remaining budget to the first allocatable channel
+                    const channel = allocatableChannels[0];
+                    const increase = Math.min(remainingBudget, constraints[channel].max - allocation[channel]);
+                    allocation[channel] += increase;
+                    remainingBudget -= increase;
                 }
                 break;
             }

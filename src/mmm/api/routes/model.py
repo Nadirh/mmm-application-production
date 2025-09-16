@@ -851,3 +851,104 @@ async def force_cancel_training(run_id: str, db: AsyncSession = Depends(get_db))
         logger.error("Failed to force-cancel training", run_id=run_id, error=str(e))
         await db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to force-cancel training: {str(e)}")
+
+
+@router.get("/marginal-roi/{run_id}")
+async def get_marginal_roi(run_id: str) -> Dict[str, Any]:
+    """Get marginal ROI for all channels at current spend levels."""
+    if run_id not in training_runs:
+        raise HTTPException(status_code=404, detail="Training run not found")
+
+    run = training_runs[run_id]
+
+    if run["status"] != "completed":
+        raise HTTPException(status_code=400, detail="Training not completed")
+
+    # Get cached model results first
+    cached_results = await cache_manager.get_model_results(run_id)
+    if cached_results:
+        model_parameters = cached_results["parameters"]
+    else:
+        # Fallback to run data
+        results = run["results"]
+        model_parameters = {
+            "alpha_baseline": results.parameters.alpha_baseline,
+            "alpha_trend": results.parameters.alpha_trend,
+            "channel_alphas": results.parameters.channel_alphas,
+            "channel_betas": results.parameters.channel_betas,
+            "channel_rs": results.parameters.channel_rs
+        }
+
+    # Get 28-day average daily spend from uploaded data
+    upload_session = upload_sessions.get(run["upload_id"])
+
+    if not upload_session or "processed_df" not in upload_session:
+        raise HTTPException(status_code=400, detail="Upload data not found")
+
+    processed_df = upload_session["processed_df"]
+
+    # Get the last 28 days of data
+    if len(processed_df) >= 28:
+        recent_data = processed_df.tail(28)
+    else:
+        recent_data = processed_df  # Use all available data if less than 28 days
+
+    # Calculate average daily spend for each channel
+    excluded_columns = ["date", "profit", "is_holiday", "promo_flag", "site_outage", "days_since_start",
+                       "day_of_week", "is_weekend", "month", "quarter", "year", "day_of_year"]
+    channel_columns = [col for col in processed_df.columns if col not in excluded_columns]
+
+    current_spend = {}
+    baseline_spend_per_day = {}
+    marginal_roi_by_channel = {}
+
+    for channel in channel_columns:
+        if channel in model_parameters["channel_alphas"]:
+            # Get model parameters for this channel
+            alpha = model_parameters["channel_alphas"][channel]
+            beta = model_parameters["channel_betas"][channel]
+            r = model_parameters["channel_rs"][channel]
+
+            # Calculate 28-day average daily spend
+            if channel in recent_data.columns:
+                avg_daily_spend = float(recent_data[channel].mean())
+            else:
+                avg_daily_spend = float(processed_df[channel].mean())
+
+            current_spend[channel] = avg_daily_spend
+            baseline_spend_per_day[channel] = avg_daily_spend
+
+            # Calculate marginal ROI at current spend level
+            # Apply adstock transformation
+            adstock_factor = 1 / (1 - r) if r < 1 else 1
+
+            if avg_daily_spend > 0:
+                # Calculate marginal ROI: first derivative of the response function
+                # d/dx[alpha * (x/(1-r))^beta] = alpha * beta * (1/(1-r))^beta * x^(beta-1)
+                # This gives the additional profit per additional dollar spent
+                marginal_roi = alpha * beta * (adstock_factor ** beta) * (avg_daily_spend ** (beta - 1))
+                marginal_roi_by_channel[channel] = float(max(0, marginal_roi))
+            else:
+                # For zero spend, calculate marginal ROI at the limit as x approaches 0
+                # If beta >= 1, marginal ROI at x=0 is 0
+                # If beta < 1, marginal ROI at x=0 approaches infinity, so we use the alpha * beta * adstock_factor
+                if beta >= 1:
+                    marginal_roi_by_channel[channel] = 0.0
+                else:
+                    # For diminishing returns (beta < 1), at x=0 the marginal return is very high
+                    # We'll use a small epsilon to approximate the derivative near zero
+                    epsilon = 0.01
+                    marginal_roi = alpha * beta * (adstock_factor ** beta) * (epsilon ** (beta - 1))
+                    marginal_roi_by_channel[channel] = float(max(0, marginal_roi))
+
+    # Generate interpretation
+    avg_roi = sum(marginal_roi_by_channel.values()) / len(marginal_roi_by_channel) if marginal_roi_by_channel else 0
+    interpretation = f"Average marginal ROI across channels: ${avg_roi:.2f} per dollar spent"
+
+    return {
+        "run_id": run_id,
+        "marginal_roi_by_channel": marginal_roi_by_channel,
+        "current_spend": current_spend,
+        "baseline_spend_per_day": baseline_spend_per_day,
+        "interpretation": interpretation
+    }
