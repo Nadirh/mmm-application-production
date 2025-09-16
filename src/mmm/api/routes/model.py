@@ -679,7 +679,7 @@ async def cancel_training(run_id: str, db: AsyncSession = Depends(get_db)) -> Di
             .where(TrainingRun.id == run_id)
             .values(
                 status="cancelled",
-                end_time=datetime.now(UTC),
+                completion_time=datetime.now(UTC),
                 current_progress={"type": "cancelled", "message": "Training cancelled by user"}
             )
         )
@@ -728,7 +728,7 @@ async def force_cancel_training(run_id: str, db: AsyncSession = Depends(get_db))
             .where(TrainingRun.id == run_id)
             .values(
                 status="cancelled",
-                end_time=datetime.now(UTC),
+                completion_time=datetime.now(UTC),
                 current_progress={"type": "cancelled", "message": "Training force-cancelled (system restart)"},
                 error_message="Training was interrupted by system restart"
             )
