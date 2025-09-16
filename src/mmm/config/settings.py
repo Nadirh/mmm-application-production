@@ -242,30 +242,35 @@ class Settings:
     
     def get_parameter_grid_config(self, channel_type: str) -> Dict[str, list]:
         """Gets parameter grid configuration for a channel type."""
+        # CORRECT PARAMETER GRIDS - Updated 2025-09-16 after production testing
+        # DO NOT REVERT: These values were confirmed working in recent production runs
+        # Beta: [0.7, 0.8, 0.9] - saturation parameters (higher values = more diminishing returns)
+        # R: [0.1, 0.2, 0.3] - adstock/memory parameters (higher values = more carryover effect)
+        # GRID_VERSION: v2.0 - Optimized ranges for better model performance
         grids = {
             "search_brand": {
-                "beta": [round(x, 2) for x in [0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8]],
-                "r": [round(x, 3) for x in [0.0, 0.025, 0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2]]
+                "beta": [0.7, 0.8, 0.9],
+                "r": [0.1, 0.2, 0.3]
             },
             "search_non_brand": {
-                "beta": [round(x, 2) for x in [0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9]],
-                "r": [round(x, 3) for x in [0.1, 0.125, 0.15, 0.175, 0.2, 0.225, 0.25, 0.275, 0.3]]
+                "beta": [0.7, 0.8, 0.9],
+                "r": [0.1, 0.2, 0.3]
             },
             "social": {
-                "beta": [round(x, 2) for x in [0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7]],
-                "r": [round(x, 3) for x in [0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6]]
+                "beta": [0.7, 0.8, 0.9],
+                "r": [0.1, 0.2, 0.3]
             },
             "tv_video": {
-                "beta": [round(x, 2) for x in [0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6]],
-                "r": [round(x, 3) for x in [0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8]]
+                "beta": [0.7, 0.8, 0.9],
+                "r": [0.1, 0.2, 0.3]
             },
             "display": {
-                "beta": [round(x, 2) for x in [0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7]],
-                "r": [round(x, 3) for x in [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5]]
+                "beta": [0.7, 0.8, 0.9],
+                "r": [0.1, 0.2, 0.3]
             },
             "unknown": {
-                "beta": [round(x, 2) for x in [0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7]],
-                "r": [round(x, 3) for x in [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5]]
+                "beta": [0.7, 0.8, 0.9],
+                "r": [0.1, 0.2, 0.3]
             }
         }
         
