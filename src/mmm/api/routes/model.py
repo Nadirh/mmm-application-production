@@ -53,9 +53,10 @@ async def train_model_background(upload_id: str, run_id: str, config: Dict[str, 
         processed_df = session["processed_df"]
         channel_info = session["channel_info"]
         
-        # Get parameter grids
+        # Get parameter grids (with custom half-lives if provided)
         processor = DataProcessor()
-        channel_grids = processor.get_parameter_grid(channel_info)
+        custom_half_lives = config.get("custom_half_lives", None)
+        channel_grids = processor.get_parameter_grid(channel_info, custom_half_lives)
         
         # Initialize model
         model = MMMModel(
@@ -355,6 +356,125 @@ async def train_model(
     
     logger.info("Model training queued", run_id=run_id, upload_id=upload_id)
     
+    return {"run_id": run_id, "status": "queued"}
+
+
+@router.get("/channels/{upload_id}")
+async def get_channel_classifications(upload_id: str) -> Dict[str, Any]:
+    """Get channel classifications and default half-lives for an uploaded file."""
+
+    if upload_id not in uploaded_files:
+        raise HTTPException(status_code=404, detail="Upload not found")
+
+    upload_info = uploaded_files[upload_id]
+    df = upload_info["data"]
+
+    # Extract channel names
+    channel_columns = [col for col in df.columns if col not in ["date", "revenue"]]
+
+    # Classify channels and get default half-lives
+    channel_info = {}
+    for channel in channel_columns:
+        channel_type = settings.classify_channel_type(channel)
+
+        # Default half-lives by channel type (in days)
+        default_half_lives = {
+            "search_brand": 0.3,      # Very short memory
+            "search_non_brand": 0.4,  # Short memory
+            "social": 1.0,            # Medium memory
+            "display": 1.5,           # Medium memory
+            "tv_video_youtube": 3.0,  # Long memory
+            "other": 1.0              # Default medium
+        }
+
+        channel_info[channel] = {
+            "type": channel_type,
+            "default_half_life": default_half_lives[channel_type],
+            "beta_grid": settings.get_parameter_grid_config(channel, None)["beta"],
+            "default_r_grid": settings.get_parameter_grid_config(channel, None)["r"]
+        }
+
+    return {
+        "upload_id": upload_id,
+        "channels": channel_info,
+        "total_channels": len(channel_columns)
+    }
+
+
+@router.post("/train-with-custom-half-lives")
+async def train_model_with_custom_half_lives(
+    request: Dict[str, Any],
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db)
+) -> Dict[str, Any]:
+    """Train model with custom half-lives for channels."""
+
+    upload_id = request.get("upload_id")
+    config = request.get("config", {})
+    custom_half_lives = request.get("custom_half_lives", {})
+
+    if not upload_id:
+        raise HTTPException(status_code=400, detail="upload_id is required")
+
+    if upload_id not in uploaded_files:
+        raise HTTPException(status_code=404, detail="Upload not found")
+
+    # Store custom half-lives in config
+    config["custom_half_lives"] = custom_half_lives
+
+    # Continue with normal training process
+    upload_info = uploaded_files[upload_id]
+    df = upload_info["data"]
+
+    # Validate data sufficiency for training with specified window sizes
+    total_days = len(df)
+    training_window_days = config.get("training_window_days", 84)
+    test_window_days = config.get("test_window_days", 14)
+    min_required_days = training_window_days + test_window_days
+
+    if total_days < min_required_days:
+        error_msg = (
+            f"Insufficient data for training. Your dataset has {total_days} days, "
+            f"but training requires at least {min_required_days} days."
+        )
+        raise HTTPException(status_code=400, detail=error_msg)
+
+    run_id = str(uuid.uuid4())
+
+    # Create database training run entry
+    try:
+        from mmm.database.models import TrainingRun
+
+        start_time = datetime.now(UTC)
+        db_training_run = TrainingRun(
+            id=run_id,
+            upload_session_id=upload_id,
+            start_time=start_time,
+            status="queued",
+            training_config=config,
+            current_progress={"type": "queued"}
+        )
+        db.add(db_training_run)
+        await db.commit()
+
+        # Store in memory cache
+        training_runs[run_id] = {
+            "upload_id": upload_id,
+            "run_id": run_id,
+            "start_time": start_time,
+            "status": "queued",
+            "config": config,
+            "progress": {"type": "queued"}
+        }
+
+        # Start background training
+        background_tasks.add_task(train_model_background, upload_id, run_id, config)
+
+    except Exception as e:
+        logger.error("Failed to create training run", run_id=run_id, error=str(e))
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to create training run: {str(e)}")
+
     return {"run_id": run_id, "status": "queued"}
 
 

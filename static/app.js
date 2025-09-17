@@ -111,6 +111,8 @@ class MMMApp {
                 this.showSection('summary-section');
                 this.showSection('config-section');
                 document.getElementById('start-training').disabled = false;
+                // Fetch and display channel classifications
+                await this.fetchChannelClassifications();
             } else {
                 this.showStatus(`❌ Upload failed: ${result.detail}`, 'error');
             }
@@ -174,30 +176,182 @@ class MMMApp {
         `;
     }
 
+    async fetchChannelClassifications() {
+        try {
+            const response = await fetch(`${this.apiUrl}/model/channels/${this.uploadId}`);
+            const data = await response.json();
+
+            if (response.ok) {
+                this.displayChannelClassifications(data.channels);
+            } else {
+                console.error('Failed to fetch channel classifications:', data);
+            }
+        } catch (error) {
+            console.error('Error fetching channel classifications:', error);
+        }
+    }
+
+    displayChannelClassifications(channels) {
+        const classificationsHtml = `
+            <div style="margin-top: 30px; padding: 20px; background: #f8f9fa; border: 2px solid #28a745; border-radius: 8px;">
+                <h3 style="color: #28a745; margin-bottom: 15px;">🌟 Channel Classification & Half-Life Customization</h3>
+                <p style="margin-bottom: 15px;">Channels have been classified based on their names. You can adjust the half-life (days) for carryover effects:</p>
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="background: #e9ecef;">
+                            <th style="padding: 10px; text-align: left; border: 1px solid #dee2e6;">Channel</th>
+                            <th style="padding: 10px; text-align: left; border: 1px solid #dee2e6;">Type</th>
+                            <th style="padding: 10px; text-align: left; border: 1px solid #dee2e6;">Default Half-Life (days)</th>
+                            <th style="padding: 10px; text-align: left; border: 1px solid #dee2e6;">Custom Half-Life</th>
+                            <th style="padding: 10px; text-align: left; border: 1px solid #dee2e6;">Beta Grid</th>
+                            <th style="padding: 10px; text-align: left; border: 1px solid #dee2e6;">R Grid (from half-life)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${Object.entries(channels).map(([name, info]) => `
+                            <tr>
+                                <td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">${this.formatChannelName(name)}</td>
+                                <td style="padding: 10px; border: 1px solid #dee2e6;">
+                                    <span style="background: ${this.getTypeColor(info.type)}; color: white; padding: 2px 8px; border-radius: 4px;">
+                                        ${info.type.replace(/_/g, ' ')}
+                                    </span>
+                                </td>
+                                <td style="padding: 10px; border: 1px solid #dee2e6; text-align: center;">${info.default_half_life}</td>
+                                <td style="padding: 10px; border: 1px solid #dee2e6;">
+                                    <input type="number"
+                                           id="halflife-${name}"
+                                           class="halflife-input"
+                                           min="0.1"
+                                           max="10"
+                                           step="0.1"
+                                           value="${info.default_half_life}"
+                                           style="width: 80px; padding: 5px;">
+                                </td>
+                                <td style="padding: 10px; border: 1px solid #dee2e6; font-size: 0.9em;">[${info.beta_grid.join(', ')}]</td>
+                                <td style="padding: 10px; border: 1px solid #dee2e6; font-size: 0.9em;" id="r-grid-${name}">[${info.default_r_grid.map(r => r.toFixed(3)).join(', ')}]</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+                <div style="margin-top: 15px; padding: 15px; background: #e7f5ff; border-left: 4px solid #339af0; border-radius: 4px;">
+                    <strong>Half-Life Guide:</strong>
+                    <ul style="margin-top: 10px; margin-bottom: 0;">
+                        <li><strong>Search (Brand):</strong> 0.2-0.4 days - Very short memory, immediate impact</li>
+                        <li><strong>Search (Non-Brand):</strong> 0.3-0.5 days - Short memory</li>
+                        <li><strong>Social:</strong> 0.5-1.5 days - Medium memory, viral effects can persist</li>
+                        <li><strong>Display:</strong> 1.0-2.0 days - Medium memory with retargeting</li>
+                        <li><strong>TV/Video/YouTube:</strong> 2.0-5.0 days - Long memory, brand building effects</li>
+                    </ul>
+                </div>
+                <button id="reset-halflifes" class="btn btn-secondary" style="margin-top: 15px;" onclick="app.resetHalfLifes()">
+                    Reset to Defaults
+                </button>
+            </div>
+        `;
+
+        // Insert after channel info section
+        const channelInfoDiv = document.getElementById('channel-info');
+        const classificationsDiv = document.createElement('div');
+        classificationsDiv.id = 'channel-classifications';
+        classificationsDiv.innerHTML = classificationsHtml;
+        channelInfoDiv.parentNode.insertBefore(classificationsDiv, channelInfoDiv.nextSibling);
+
+        // Store channel data for later use
+        this.channelData = channels;
+
+        // Add event listeners for half-life inputs
+        Object.keys(channels).forEach(name => {
+            const input = document.getElementById(`halflife-${name}`);
+            if (input) {
+                input.addEventListener('input', (e) => {
+                    this.updateRGrid(name, parseFloat(e.target.value));
+                });
+            }
+        });
+    }
+
+    getTypeColor(type) {
+        const colors = {
+            'search_brand': '#dc3545',      // Red
+            'search_non_brand': '#fd7e14',  // Orange
+            'social': '#6f42c1',             // Purple
+            'display': '#20c997',            // Teal
+            'tv_video_youtube': '#007bff',  // Blue
+            'other': '#6c757d'              // Gray
+        };
+        return colors[type] || colors['other'];
+    }
+
+    updateRGrid(channelName, halfLife) {
+        // Generate 5 r values from half-life
+        const rValues = [];
+        for (let i = 0.5; i <= 1.5; i += 0.25) {
+            const hl = halfLife * i;
+            const r = Math.pow(0.5, 1/hl);
+            rValues.push(Math.max(0.01, Math.min(0.95, r)));
+        }
+
+        // Update display
+        const rGridElement = document.getElementById(`r-grid-${channelName}`);
+        if (rGridElement) {
+            rGridElement.textContent = '[' + rValues.map(r => r.toFixed(3)).join(', ') + ']';
+        }
+    }
+
+    resetHalfLifes() {
+        if (this.channelData) {
+            Object.entries(this.channelData).forEach(([name, info]) => {
+                const input = document.getElementById(`halflife-${name}`);
+                if (input) {
+                    input.value = info.default_half_life;
+                    this.updateRGrid(name, info.default_half_life);
+                }
+            });
+        }
+    }
+
     async startTraining() {
         if (!this.uploadId) {
             this.showStatus('❌ No data uploaded', 'error');
             return;
         }
 
-        const config = {
-            carryover_prior: "uniform",
-            saturation_prior: "uniform", 
-            media_transform: "adstock",
-            max_lag: 8,
-            iterations: 2000
+        // Collect custom half-lives
+        const customHalfLives = {};
+        if (this.channelData) {
+            Object.keys(this.channelData).forEach(name => {
+                const input = document.getElementById(`halflife-${name}`);
+                if (input) {
+                    const value = parseFloat(input.value);
+                    if (value !== this.channelData[name].default_half_life) {
+                        customHalfLives[name] = value;
+                    }
+                }
+            });
+        }
+
+        const requestData = {
+            upload_id: this.uploadId,
+            config: {
+                carryover_prior: "uniform",
+                saturation_prior: "uniform",
+                media_transform: "adstock",
+                max_lag: 8,
+                iterations: 2000
+            },
+            custom_half_lives: customHalfLives
         };
 
         try {
             document.getElementById('start-training').disabled = true;
             this.showSection('progress-section');
-            
-            const response = await fetch(`${this.apiUrl}/model/train?upload_id=${this.uploadId}`, {
+
+            const response = await fetch(`${this.apiUrl}/model/train-with-custom-half-lives`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify(config)
+                body: JSON.stringify(requestData)
             });
 
             const result = await response.json();

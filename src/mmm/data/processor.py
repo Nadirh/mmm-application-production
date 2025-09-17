@@ -178,12 +178,13 @@ class DataProcessor:
         
         return df
     
-    def get_parameter_grid(self, channel_info: Dict[str, ChannelInfo]) -> Dict[str, Dict[str, List[float]]]:
+    def get_parameter_grid(self, channel_info: Dict[str, ChannelInfo], custom_half_lives: Dict[str, float] = None) -> Dict[str, Dict[str, List[float]]]:
         """
         Returns parameter grid for optimization based on channel types.
 
         Args:
             channel_info: Dictionary of channel information
+            custom_half_lives: Optional dict of channel_name -> half_life_days
 
         Returns:
             Dictionary mapping channel names to their parameter grids
@@ -191,9 +192,9 @@ class DataProcessor:
         # Use settings.py as the single source of truth for parameter grids
         channel_grids = {}
         for channel_name, info in channel_info.items():
-            # Get parameter grid from settings based on channel type
+            # Get parameter grid from settings using channel name (not type)
             channel_grids[channel_name] = settings.get_parameter_grid_config(
-                info.type.value
+                channel_name, custom_half_lives
             )
 
         return channel_grids
