@@ -376,23 +376,28 @@ async def get_channel_classifications(upload_id: str) -> Dict[str, Any]:
 
     # Classify channels and get default r values
     channel_info = {}
+
+    # Get default center r values from settings
+    default_r_centers = {
+        "search_brand": 0.15,      # ~15% carries to next day
+        "search_non_brand": 0.2,   # ~20% carries to next day
+        "social": 0.3,             # ~30% carries to next day
+        "display": 0.35,           # ~35% carries to next day
+        "tv_video_youtube": 0.5,   # ~50% carries to next day
+        "other": 0.3               # ~30% carries to next day (default)
+    }
+
     for channel in channel_columns:
         channel_type = settings.classify_channel_type(channel)
 
-        # Default center r values by channel type (for display/customization)
-        default_r_values = {
-            "search_brand": 0.15,      # ~15% carries to next day
-            "search_non_brand": 0.2,   # ~20% carries to next day
-            "social": 0.3,             # ~30% carries to next day
-            "display": 0.35,           # ~35% carries to next day
-            "tv_video_youtube": 0.5,   # ~50% carries to next day
-            "other": 0.3               # ~30% carries to next day (default)
-        }
+        # Get the default center value and generated grid
+        default_center = default_r_centers[channel_type]
+        grid_config = settings.get_parameter_grid_config(channel, None)
 
         channel_info[channel] = {
             "type": channel_type,
-            "default_r": default_r_values[channel_type],
-            "r_grid": settings.get_parameter_grid_config(channel, None)["r"]
+            "default_r": default_center,
+            "r_grid": grid_config["r"]
         }
 
     return {

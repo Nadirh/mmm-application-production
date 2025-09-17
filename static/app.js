@@ -318,35 +318,51 @@ class MMMApp {
             `;
         }
 
-        // Generate 5 r values using same logic as backend
+        // Generate r values from 50% to 150% of center
         // This matches the generate_r_grid_from_center method in settings.py
-        let step;
-        if (centerR <= 0.2) {
-            step = 0.05;
-        } else if (centerR <= 0.4) {
-            step = 0.1;
+        const rValues = [];
+
+        // Special case: if center is 0, return only 0
+        if (centerR === 0) {
+            rValues.push(0);
         } else {
-            step = 0.1;
+            // Generate values from 50% to 150%
+            const percentages = [0.5, 0.75, 1.0, 1.25, 1.5];
+            for (const pct of percentages) {
+                const rVal = centerR * pct;
+                // Cap at 0.99 and stop adding if we've reached the cap
+                if (rVal >= 0.99) {
+                    if (!rValues.includes(0.99)) {
+                        rValues.push(0.99);
+                    }
+                    break;
+                } else {
+                    rValues.push(Math.round(rVal * 1000) / 1000); // Round to 3 decimals
+                }
+            }
+
+            // If only one value and it's less than 0.99, add a slight variation
+            if (rValues.length === 1 && rValues[0] < 0.99) {
+                rValues.push(Math.min(0.99, Math.round(rValues[0] * 1.1 * 1000) / 1000));
+            }
         }
 
-        const rValues = [
-            centerR - 2 * step,
-            centerR - step,
-            centerR,
-            centerR + step,
-            centerR + 2 * step
-        ].map(r => Math.max(0.01, Math.min(0.95, r)));
-
-        // Update grid display
+        // Update grid display with different styling for custom values
         const rGridElement = document.getElementById(`r-grid-${channelName}`);
         if (rGridElement) {
+            const isCustom = this.channelData && centerR !== parseFloat(this.channelData[channelName].default_r);
+            const bgColor = isCustom ? '#fff3cd' : '#edf2f7';
+            const textColor = isCustom ? '#856404' : '#2d3748';
+            const border = isCustom ? 'border: 1px solid #ffc107;' : '';
+
             rGridElement.innerHTML = `
-                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
                     ${rValues.map(r => `
-                        <span style="background: #fff3cd; color: #856404; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 0.9em; border: 1px solid #ffc107;">
+                        <span style="background: ${bgColor}; color: ${textColor}; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 0.9em; ${border}">
                             ${r.toFixed(3)}
                         </span>
                     `).join('')}
+                    ${rValues.length < 5 ? `<span style="color: #666; font-size: 0.85em; font-style: italic; padding: 4px;">(${rValues.length} value${rValues.length > 1 ? 's' : ''})</span>` : ''}
                 </div>
             `;
         }

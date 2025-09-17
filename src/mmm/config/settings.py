@@ -278,7 +278,7 @@ class Settings:
         # Classify the channel type
         channel_type = self.classify_channel_type(channel_name)
 
-        # GRID_VERSION: v4.1 - Channel-specific grids with 5x5 combinations
+        # GRID_VERSION: v4.2 - Channel-specific grids with up to 5x5 combinations
         # Beta grids by channel type
         beta_grids = {
             "search_brand": [0.4, 0.5, 0.6, 0.7, 0.8],
@@ -289,21 +289,24 @@ class Settings:
             "other": [0.5, 0.6, 0.7, 0.8, 0.9]
         }
 
-        # Default r grids by channel type (hardcoded for optimal coverage)
-        default_r_grids = {
-            "search_brand": [0.05, 0.1, 0.15, 0.2, 0.25],
-            "search_non_brand": [0.1, 0.15, 0.2, 0.25, 0.3],
-            "social": [0.1, 0.2, 0.3, 0.4, 0.5],
-            "display": [0.15, 0.25, 0.35, 0.45, 0.55],
-            "tv_video_youtube": [0.3, 0.4, 0.5, 0.6, 0.7],
-            "other": [0.1, 0.2, 0.3, 0.4, 0.5]
+        # Default r center values by channel type
+        default_r_centers = {
+            "search_brand": 0.15,      # Fast decay
+            "search_non_brand": 0.2,    # Fast-medium decay
+            "social": 0.3,              # Medium decay
+            "display": 0.35,            # Medium decay
+            "tv_video_youtube": 0.5,    # Slow decay
+            "other": 0.3                # Medium decay
         }
 
-        # Get r values (use custom grid if provided)
+        # Get center r value (use custom if provided, otherwise use default)
         if custom_r_values and channel_name in custom_r_values:
-            r_values = self.generate_r_grid_from_center(custom_r_values[channel_name])
+            center_r = custom_r_values[channel_name]
         else:
-            r_values = default_r_grids[channel_type]
+            center_r = default_r_centers[channel_type]
+
+        # Generate r grid from center value
+        r_values = self.generate_r_grid_from_center(center_r)
 
         return {
             "beta": beta_grids[channel_type],
@@ -311,40 +314,39 @@ class Settings:
         }
 
     def generate_r_grid_from_center(self, center_r: float) -> list:
-        """Generate 5 r values around a center r value.
+        """Generate up to 5 r values from 50% to 150% of center value.
 
-        Creates a grid with consistent spacing around the center value,
-        similar to the pattern used in default grids.
+        Special cases:
+        - If center_r = 0, return [0]
+        - Values are capped at 0.99 maximum
+        - May return fewer than 5 values if hitting upper bound
         """
         import numpy as np
 
-        # Ensure center is in valid range
-        center_r = max(0.05, min(0.9, float(center_r)))
+        center_r = float(center_r)
 
-        # Determine appropriate spacing based on center value
-        # Lower values get tighter spacing, higher values get wider spacing
-        if center_r <= 0.2:
-            # For low r values (fast decay), use tighter spacing
-            step = 0.05
-        elif center_r <= 0.4:
-            # For medium r values, use medium spacing
-            step = 0.1
-        else:
-            # For high r values (slow decay), use wider spacing
-            step = 0.1
+        # Special case: if center is 0, return only 0
+        if center_r == 0:
+            return [0]
 
-        # Generate 5 values centered around the custom value
-        # Pattern: [center - 2*step, center - step, center, center + step, center + 2*step]
-        r_values = [
-            center_r - 2 * step,
-            center_r - step,
-            center_r,
-            center_r + step,
-            center_r + 2 * step
-        ]
+        # Generate 5 values from 50% to 150% of center
+        percentages = [0.5, 0.75, 1.0, 1.25, 1.5]
+        r_values = []
 
-        # Round and ensure values are within bounds [0.01, 0.95]
-        r_values = [round(max(0.01, min(0.95, r)), 3) for r in r_values]
+        for pct in percentages:
+            r_val = center_r * pct
+            # Cap at 0.99 and stop adding if we've reached the cap
+            if r_val >= 0.99:
+                if 0.99 not in r_values:  # Only add 0.99 once
+                    r_values.append(0.99)
+                break
+            else:
+                r_values.append(round(r_val, 3))
+
+        # Ensure we have at least some variation for optimization
+        # If only one value, add slight variations if possible
+        if len(r_values) == 1 and r_values[0] < 0.99:
+            r_values.append(min(0.99, round(r_values[0] * 1.1, 3)))
 
         return r_values
     
