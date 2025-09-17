@@ -54,15 +54,70 @@ class MMMModel:
     def __init__(self,
                  training_window_days: int = 126,
                  test_window_days: int = 14,
-                 n_bootstrap: int = 500):
+                 n_bootstrap: int = 500,
+                 use_nested_cv: bool = True):
         self.training_window_days = training_window_days
         self.test_window_days = test_window_days
         self.n_bootstrap = n_bootstrap
+        self.use_nested_cv = use_nested_cv
         self.is_fitted = False
         self.results: Optional[ModelResults] = None
         
-    def fit(self, 
-            df: pd.DataFrame, 
+    def _calculate_nested_cv_structure(self, n_weeks: int) -> Dict[str, Any]:
+        """Calculate nested CV fold structure based on data size."""
+
+        # Determine number of outer folds
+        if n_weeks < 26:
+            raise ValueError(f"Minimum 26 weeks required, got {n_weeks} weeks")
+        elif n_weeks <= 30:
+            n_folds = 2
+        elif n_weeks <= 42:
+            n_folds = 3
+        else:
+            n_folds = 4
+
+        # Calculate weeks per fold
+        weeks_per_fold = n_weeks // n_folds
+        remainder = n_weeks % n_folds
+
+        folds = []
+        start_week = 0
+
+        for i in range(n_folds):
+            # Add remainder weeks to last fold
+            fold_weeks = weeks_per_fold + (remainder if i == n_folds - 1 else 0)
+
+            # Determine outer test size (15-25% of fold, 2-4 weeks max)
+            outer_test = min(4, max(2, fold_weeks // 5))
+            outer_train = fold_weeks - outer_test
+
+            # Inner split: approximately 70/30 train/test
+            inner_train = max(5, (outer_train * 7) // 10)
+            inner_test = outer_train - inner_train
+
+            folds.append({
+                'fold_num': i + 1,
+                'start_week': start_week,
+                'end_week': start_week + fold_weeks - 1,
+                'total_weeks': fold_weeks,
+                'outer_train_weeks': outer_train,
+                'outer_test_weeks': outer_test,
+                'inner_train_weeks': inner_train,
+                'inner_test_weeks': inner_test,
+                'start_day': start_week * 7,
+                'end_day': (start_week + fold_weeks) * 7 - 1
+            })
+
+            start_week += fold_weeks
+
+        return {
+            'n_weeks': n_weeks,
+            'n_outer_folds': n_folds,
+            'folds': folds
+        }
+
+    def fit(self,
+            df: pd.DataFrame,
             channel_grids: Dict[str, Dict[str, List[float]]],
             progress_callback: Optional[callable] = None,
             cancellation_check: Optional[callable] = None) -> ModelResults:
@@ -83,10 +138,55 @@ class MMMModel:
         y = df["profit"].values
         X_spend = df[spend_columns].values
         X_time = df["days_since_start"].values
-        
-        # Perform cross-validation
-        cv_folds = self._perform_cross_validation(
-            y, X_spend, X_time, spend_columns, channel_grids, progress_callback, cancellation_check
+
+        # Calculate data size and fold structure
+        n_days = len(y)
+        n_weeks = n_days // 7
+
+        # Report fold structure to dashboard
+        if self.use_nested_cv and n_weeks >= 26:
+            cv_structure = self._calculate_nested_cv_structure(n_weeks)
+
+            # Send fold structure to dashboard
+            if progress_callback:
+                fold_info = {
+                    "type": "cv_structure",
+                    "total_weeks": n_weeks,
+                    "total_days": n_days,
+                    "n_outer_folds": cv_structure['n_outer_folds'],
+                    "fold_details": []
+                }
+
+                for fold in cv_structure['folds']:
+                    fold_info["fold_details"].append({
+                        "fold": fold['fold_num'],
+                        "weeks": f"{fold['start_week']}-{fold['end_week']}",
+                        "outer_train": f"{fold['outer_train_weeks']}w",
+                        "outer_test": f"{fold['outer_test_weeks']}w",
+                        "inner_train": f"{fold['inner_train_weeks']}w",
+                        "inner_test": f"{fold['inner_test_weeks']}w"
+                    })
+
+                progress_callback(fold_info)
+                logger.info(f"Nested CV Structure: {n_weeks} weeks → {cv_structure['n_outer_folds']} outer folds")
+
+            # Perform nested cross-validation
+            cv_folds = self._perform_nested_cross_validation(
+                y, X_spend, X_time, spend_columns, channel_grids,
+                cv_structure, progress_callback, cancellation_check
+            )
+        else:
+            # Fall back to simple CV for less data or if disabled
+            if progress_callback:
+                progress_callback({
+                    "type": "cv_structure",
+                    "message": f"Using simple CV (data has {n_weeks} weeks, nested CV requires 26+)",
+                    "total_weeks": n_weeks,
+                    "method": "simple"
+                })
+
+            cv_folds = self._perform_cross_validation(
+                y, X_spend, X_time, spend_columns, channel_grids, progress_callback, cancellation_check
         )
         
         # Select best parameters based on CV performance (averages top folds)
@@ -126,6 +226,118 @@ class MMMModel:
         self.is_fitted = True
         return self.results
     
+    def _perform_nested_cross_validation(self,
+                                        y: np.ndarray,
+                                        X_spend: np.ndarray,
+                                        X_time: np.ndarray,
+                                        spend_columns: List[str],
+                                        channel_grids: Dict[str, Dict[str, List[float]]],
+                                        cv_structure: Dict[str, Any],
+                                        progress_callback: Optional[callable] = None,
+                                        cancellation_check: Optional[callable] = None) -> List[CrossValidationFold]:
+        """Performs nested cross-validation."""
+        outer_folds = []
+
+        for fold_config in cv_structure['folds']:
+            # Check for cancellation
+            if cancellation_check and cancellation_check():
+                raise InterruptedError("Training cancelled by user")
+
+            fold_num = fold_config['fold_num']
+            logger.info(f"Processing Outer Fold {fold_num}/{cv_structure['n_outer_folds']}")
+
+            # Report outer fold progress
+            if progress_callback:
+                progress_callback({
+                    "type": "outer_fold_start",
+                    "fold": fold_num,
+                    "total_folds": cv_structure['n_outer_folds'],
+                    "weeks": f"{fold_config['start_week']}-{fold_config['end_week']}"
+                })
+
+            # Define outer fold boundaries (in days)
+            outer_train_start = fold_config['start_day']
+            outer_train_end = outer_train_start + (fold_config['outer_train_weeks'] * 7) - 1
+            outer_test_start = outer_train_end + 1
+            outer_test_end = fold_config['end_day']
+
+            # Extract outer training data
+            outer_train_mask = slice(outer_train_start, outer_train_end + 1)
+            y_outer_train = y[outer_train_mask]
+            X_spend_outer_train = X_spend[outer_train_mask]
+            X_time_outer_train = X_time[outer_train_mask]
+
+            # Define inner fold boundaries
+            inner_train_end = (fold_config['inner_train_weeks'] * 7) - 1
+            inner_test_start = inner_train_end + 1
+            inner_test_end = (fold_config['outer_train_weeks'] * 7) - 1
+
+            # Inner fold data
+            inner_train_mask = slice(0, inner_train_end + 1)
+            inner_test_mask = slice(inner_test_start, inner_test_end + 1)
+
+            y_inner_train = y_outer_train[inner_train_mask]
+            X_spend_inner_train = X_spend_outer_train[inner_train_mask]
+            X_time_inner_train = X_time_outer_train[inner_train_mask]
+
+            y_inner_test = y_outer_train[inner_test_mask]
+            X_spend_inner_test = X_spend_outer_train[inner_test_mask]
+            X_time_inner_test = X_time_outer_train[inner_test_mask]
+
+            # Report inner fold info
+            if progress_callback:
+                progress_callback({
+                    "type": "inner_fold_info",
+                    "outer_fold": fold_num,
+                    "inner_train_days": len(y_inner_train),
+                    "inner_test_days": len(y_inner_test)
+                })
+
+            # Grid search on inner fold
+            best_params = self._optimize_parameters_single_fold(
+                y_inner_train, X_spend_inner_train, X_time_inner_train,
+                spend_columns, channel_grids,
+                lambda info: progress_callback({**info, "outer_fold": fold_num}) if progress_callback else None,
+                fold_num - 1
+            )
+
+            # Evaluate on outer test set with best params
+            outer_test_mask = slice(outer_test_start, outer_test_end + 1)
+            y_outer_test = y[outer_test_mask]
+            X_spend_outer_test = X_spend[outer_test_mask]
+            X_time_outer_test = X_time[outer_test_mask]
+
+            # Train on full outer training data with best params
+            final_params = self._fit_final_model(
+                y_outer_train, X_spend_outer_train, X_time_outer_train,
+                spend_columns, best_params
+            )
+
+            # Evaluate on outer test
+            y_pred_test = self._predict(X_spend_outer_test, X_time_outer_test, spend_columns, final_params)
+            fold_mape = mean_absolute_percentage_error(y_outer_test, y_pred_test) * 100
+
+            outer_folds.append(CrossValidationFold(
+                fold_number=fold_num,
+                train_start=outer_train_start,
+                train_end=outer_train_end,
+                test_start=outer_test_start,
+                test_end=outer_test_end,
+                mape=fold_mape,
+                parameters=final_params
+            ))
+
+            logger.info(f"Outer Fold {fold_num} completed: MAPE={fold_mape:.2f}%")
+
+            if progress_callback:
+                progress_callback({
+                    "type": "outer_fold_complete",
+                    "fold": fold_num,
+                    "mape": fold_mape
+                })
+
+        return outer_folds
+
     def _perform_cross_validation(self, 
                                  y: np.ndarray,
                                  X_spend: np.ndarray,

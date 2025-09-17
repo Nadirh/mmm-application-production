@@ -47,10 +47,33 @@ class TrainingProgressTracker:
             
         elif progress_type == "bootstrap_started":
             self.current_step = "Calculating confidence intervals"
-            
+
+        elif progress_type == "cv_structure":
+            # Pass through CV structure info directly
+            return data
+
+        elif progress_type == "outer_fold_start":
+            fold = data.get("fold", 0)
+            total_folds = data.get("total_folds", 0)
+            weeks = data.get("weeks", "")
+            self.current_step = f"Nested CV - Outer Fold {fold}/{total_folds} (Weeks {weeks})"
+            self.current_fold = fold
+            self.total_folds = total_folds
+
+        elif progress_type == "outer_fold_complete":
+            fold = data.get("fold", 0)
+            mape = data.get("mape", 0)
+            self.current_step = f"Outer Fold {fold} complete (MAPE: {mape:.2f}%)"
+
+        elif progress_type == "inner_fold_info":
+            outer_fold = data.get("outer_fold", 0)
+            inner_train = data.get("inner_train_days", 0)
+            inner_test = data.get("inner_test_days", 0)
+            self.current_step = f"Inner fold: {inner_train} train days, {inner_test} test days"
+
         elif progress_type == "training_complete":
             self.current_step = "Training completed"
-            
+
         elif progress_type == "training_error":
             self.current_step = "Training failed"
         

@@ -321,9 +321,28 @@ class MMMApp {
     updateProgressDisplay(progress) {
         const progressFill = document.getElementById('progress-fill');
         const progressPct = progress.progress?.progress_pct || 0;
-        
+
         progressFill.style.width = `${Math.min(progressPct, 100)}%`;
-        
+
+        // Handle CV structure display
+        if (progress.progress?.type === 'cv_structure') {
+            this.displayCVStructure(progress.progress);
+            return;
+        }
+
+        // Handle outer fold updates for nested CV
+        if (progress.progress?.type === 'outer_fold_start') {
+            const msg = `🔄 Nested CV - Outer Fold ${progress.progress.fold}/${progress.progress.total_folds} (Weeks ${progress.progress.weeks})`;
+            this.showTrainingStatus(msg, 'info');
+            return;
+        }
+
+        if (progress.progress?.type === 'outer_fold_complete') {
+            const msg = `✅ Outer Fold ${progress.progress.fold} Complete - MAPE: ${progress.progress.mape.toFixed(2)}%`;
+            this.showTrainingStatus(msg, 'success');
+            return;
+        }
+
         let statusMessage = `Status: ${progress.status}`;
         if (progress.progress?.current_step) {
             statusMessage += ` - ${progress.progress.current_step}`;
@@ -331,8 +350,50 @@ class MMMApp {
         if (progress.progress?.current_fold && progress.progress?.total_folds) {
             statusMessage += ` (${progress.progress.current_fold}/${progress.progress.total_folds})`;
         }
-        
+
         this.showTrainingStatus(statusMessage, 'info');
+    }
+
+    displayCVStructure(cvInfo) {
+        // Create a formatted display of the CV structure
+        let message = `📊 Cross-Validation Structure:<br>`;
+        message += `Data: ${cvInfo.total_weeks} weeks (${cvInfo.total_days} days)<br>`;
+
+        if (cvInfo.method === 'simple') {
+            message += `Method: Simple CV (insufficient data for nested CV)<br>`;
+        } else {
+            message += `Method: Nested CV with ${cvInfo.n_outer_folds} outer folds<br><br>`;
+            message += `<table style="font-size: 0.9em; margin-top: 10px;">`;
+            message += `<tr style="background: #f0f0f0;">
+                        <th>Fold</th>
+                        <th>Weeks</th>
+                        <th>Outer Train</th>
+                        <th>Outer Test</th>
+                        <th>Inner Train</th>
+                        <th>Inner Test</th>
+                        </tr>`;
+
+            cvInfo.fold_details.forEach(fold => {
+                message += `<tr>
+                           <td>${fold.fold}</td>
+                           <td>${fold.weeks}</td>
+                           <td>${fold.outer_train}</td>
+                           <td>${fold.outer_test}</td>
+                           <td>${fold.inner_train}</td>
+                           <td>${fold.inner_test}</td>
+                           </tr>`;
+            });
+            message += `</table>`;
+        }
+
+        // Display in a special CV info section
+        const trainingStatus = document.getElementById('training-status');
+        trainingStatus.innerHTML = message;
+        trainingStatus.classList.remove('hidden');
+        trainingStatus.style.background = '#e3f2fd';
+        trainingStatus.style.border = '2px solid #1976d2';
+        trainingStatus.style.padding = '15px';
+        trainingStatus.style.marginBottom = '20px';
     }
 
     async showTrainingComplete(progress) {
