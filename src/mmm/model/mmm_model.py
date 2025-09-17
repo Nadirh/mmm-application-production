@@ -294,7 +294,7 @@ class MMMModel:
                 })
 
             # Grid search on inner fold
-            best_params = self._optimize_parameters_single_fold(
+            best_params = self._optimize_fold_parameters(
                 y_inner_train, X_spend_inner_train, X_time_inner_train,
                 spend_columns, channel_grids,
                 lambda info: progress_callback({**info, "outer_fold": fold_num}) if progress_callback else None,
