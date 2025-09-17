@@ -438,7 +438,8 @@ async def get_model_results(run_id: str) -> Dict[str, Any]:
             "channel_rs": results.parameters.channel_rs
         },
         "diagnostics": results.diagnostics,
-        "confidence_intervals": results.confidence_intervals
+        "confidence_intervals": results.confidence_intervals,
+        "cv_structure_info": results.cv_structure_info
     }
 
 

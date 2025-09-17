@@ -468,6 +468,14 @@ class MMMApp {
         const performance = results.model_performance || results;
         const parameters = results.parameters;
         const confidenceIntervals = results.confidence_intervals || {};
+
+        // Extract CV structure info from results
+        if (results.cv_structure_info) {
+            this.cvStructureInfo = results.cv_structure_info;
+            this.nestedCVUsed = results.cv_structure_info.method !== 'simple';
+            console.log('CV Structure from results:', this.cvStructureInfo);
+        }
+
         console.log('*** EQUATION DEBUG: Extracted parameters:', parameters);
         console.log('*** EQUATION DEBUG: Extracted confidence intervals:', confidenceIntervals);
         console.log('Extracted parameters:', parameters);
@@ -502,9 +510,9 @@ class MMMApp {
                         ${performance.n_folds_averaged || 'N/A'}
                     </div>
                     <div class="metric-label" style="color: #856404; font-weight: bold;">
-                        Simple CV<br>
+                        Parameter Averaging<br>
                         <span style="font-size: 0.85rem; font-weight: normal;">
-                            (Top ${performance.n_folds_averaged || 'N/A'} folds averaged)
+                            (Best ${performance.n_folds_averaged || 'N/A'} folds used)
                         </span>
                     </div>
                 </div>`
@@ -514,39 +522,53 @@ class MMMApp {
         document.getElementById('results-grid').innerHTML = resultsHtml;
 
         // Display CV structure details if available (after results)
-        if (this.cvStructureInfo && this.nestedCVUsed) {
-            const cvDetailsHtml = `
-                <div style="margin-top: 30px; padding: 20px; background: #e3f2fd; border: 2px solid #1976d2; border-radius: 8px;">
-                    <h3 style="color: #1976d2; margin-bottom: 15px;">📊 Nested Cross-Validation Details</h3>
-                    <p style="margin-bottom: 10px;">Data: ${this.cvStructureInfo.total_weeks} weeks (${this.cvStructureInfo.total_days} days)</p>
-                    <table style="width: 100%; font-size: 0.9em; border-collapse: collapse;">
-                        <tr style="background: #bbdefb;">
-                            <th style="padding: 8px; border: 1px solid #1976d2;">Fold</th>
-                            <th style="padding: 8px; border: 1px solid #1976d2;">Weeks</th>
-                            <th style="padding: 8px; border: 1px solid #1976d2;">Outer Train</th>
-                            <th style="padding: 8px; border: 1px solid #1976d2;">Outer Test</th>
-                            <th style="padding: 8px; border: 1px solid #1976d2;">Inner Train</th>
-                            <th style="padding: 8px; border: 1px solid #1976d2;">Inner Test</th>
-                        </tr>
-                        ${this.cvStructureInfo.fold_details.map(fold => `
-                            <tr style="background: white;">
-                                <td style="padding: 8px; border: 1px solid #1976d2; text-align: center;">${fold.fold}</td>
-                                <td style="padding: 8px; border: 1px solid #1976d2; text-align: center;">${fold.weeks}</td>
-                                <td style="padding: 8px; border: 1px solid #1976d2; text-align: center;">${fold.outer_train}</td>
-                                <td style="padding: 8px; border: 1px solid #1976d2; text-align: center;">${fold.outer_test}</td>
-                                <td style="padding: 8px; border: 1px solid #1976d2; text-align: center;">${fold.inner_train}</td>
-                                <td style="padding: 8px; border: 1px solid #1976d2; text-align: center;">${fold.inner_test}</td>
+        if (this.cvStructureInfo) {
+            if (this.nestedCVUsed && this.cvStructureInfo.fold_details) {
+                const cvDetailsHtml = `
+                    <div style="margin-top: 30px; padding: 20px; background: #e3f2fd; border: 2px solid #1976d2; border-radius: 8px;">
+                        <h3 style="color: #1976d2; margin-bottom: 15px;">📊 Nested Cross-Validation Structure</h3>
+                        <p style="margin-bottom: 10px;">Data: ${this.cvStructureInfo.total_weeks} weeks (${this.cvStructureInfo.total_days} days)</p>
+                        <table style="width: 100%; font-size: 0.9em; border-collapse: collapse;">
+                            <tr style="background: #bbdefb;">
+                                <th style="padding: 8px; border: 1px solid #1976d2;">Fold</th>
+                                <th style="padding: 8px; border: 1px solid #1976d2;">Weeks</th>
+                                <th style="padding: 8px; border: 1px solid #1976d2;">Outer Train</th>
+                                <th style="padding: 8px; border: 1px solid #1976d2;">Outer Test</th>
+                                <th style="padding: 8px; border: 1px solid #1976d2;">Inner Train</th>
+                                <th style="padding: 8px; border: 1px solid #1976d2;">Inner Test</th>
                             </tr>
-                        `).join('')}
-                    </table>
-                    <p style="margin-top: 15px; font-size: 0.9em; color: #555;">
-                        <strong>Note:</strong> Parameters were selected using inner folds, then evaluated on outer test sets for unbiased performance estimates.
-                    </p>
-                </div>
-            `;
+                            ${this.cvStructureInfo.fold_details.map(fold => `
+                                <tr style="background: white;">
+                                    <td style="padding: 8px; border: 1px solid #1976d2; text-align: center;">${fold.fold}</td>
+                                    <td style="padding: 8px; border: 1px solid #1976d2; text-align: center;">${fold.weeks}</td>
+                                    <td style="padding: 8px; border: 1px solid #1976d2; text-align: center;">${fold.outer_train}</td>
+                                    <td style="padding: 8px; border: 1px solid #1976d2; text-align: center;">${fold.outer_test}</td>
+                                    <td style="padding: 8px; border: 1px solid #1976d2; text-align: center;">${fold.inner_train}</td>
+                                    <td style="padding: 8px; border: 1px solid #1976d2; text-align: center;">${fold.inner_test}</td>
+                                </tr>
+                            `).join('')}
+                        </table>
+                        <p style="margin-top: 15px; font-size: 0.9em; color: #555;">
+                            <strong>Note:</strong> Parameters were selected using inner folds, then evaluated on outer test sets for unbiased performance estimates.
+                        </p>
+                    </div>
+                `;
 
-            // Insert CV details after results grid
-            document.getElementById('results-grid').insertAdjacentHTML('afterend', cvDetailsHtml);
+                // Insert CV details after results grid
+                document.getElementById('results-grid').insertAdjacentHTML('afterend', cvDetailsHtml);
+            } else if (!this.nestedCVUsed) {
+                // Show simple CV info
+                const simpleCvHtml = `
+                    <div style="margin-top: 30px; padding: 20px; background: #fff3cd; border: 2px solid #ffc107; border-radius: 8px;">
+                        <h3 style="color: #856404; margin-bottom: 15px;">📊 Simple Cross-Validation</h3>
+                        <p style="color: #856404;">
+                            Used simple walk-forward cross-validation with ${this.cvStructureInfo.total_weeks || 'N/A'} weeks of data.<br>
+                            Parameters from the best ${performance.n_folds_averaged || 'N/A'} folds were averaged for the final model.
+                        </p>
+                    </div>
+                `;
+                document.getElementById('results-grid').insertAdjacentHTML('afterend', simpleCvHtml);
+            }
         }
 
         // Display parameter values if available

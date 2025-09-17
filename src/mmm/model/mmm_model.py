@@ -35,6 +35,7 @@ class ModelResults:
     confidence_intervals: Dict[str, Tuple[float, float]]
     diagnostics: Dict[str, Any]
     n_folds_averaged: int = 1  # Number of folds averaged for parameters
+    cv_structure_info: Optional[Dict[str, Any]] = None  # CV structure details
 
 
 @dataclass
@@ -142,6 +143,7 @@ class MMMModel:
         # Calculate data size and fold structure
         n_days = len(y)
         n_weeks = n_days // 7
+        cv_structure_info = None  # Will store CV structure for results
 
         # Report fold structure to dashboard
         if self.use_nested_cv and n_weeks >= 26:
@@ -168,6 +170,7 @@ class MMMModel:
                     })
 
                 progress_callback(fold_info)
+                cv_structure_info = fold_info  # Store for results
                 logger.info(f"Nested CV Structure: {n_weeks} weeks → {cv_structure['n_outer_folds']} outer folds")
 
             # Perform nested cross-validation
@@ -178,12 +181,14 @@ class MMMModel:
         else:
             # Fall back to simple CV for less data or if disabled
             if progress_callback:
-                progress_callback({
+                simple_cv_info = {
                     "type": "cv_structure",
                     "message": f"Using simple CV (data has {n_weeks} weeks, nested CV requires 26+)",
                     "total_weeks": n_weeks,
                     "method": "simple"
-                })
+                }
+                progress_callback(simple_cv_info)
+                cv_structure_info = simple_cv_info  # Store for results
 
             cv_folds = self._perform_cross_validation(
                 y, X_spend, X_time, spend_columns, channel_grids, progress_callback, cancellation_check
@@ -220,7 +225,8 @@ class MMMModel:
             cv_mape=cv_mape,
             confidence_intervals=confidence_intervals,
             diagnostics=diagnostics,
-            n_folds_averaged=n_folds_averaged
+            n_folds_averaged=n_folds_averaged,
+            cv_structure_info=cv_structure_info
         )
         
         self.is_fitted = True
