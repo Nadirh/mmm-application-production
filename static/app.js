@@ -474,6 +474,8 @@ class MMMApp {
             this.cvStructureInfo = results.cv_structure_info;
             this.nestedCVUsed = results.cv_structure_info.method !== 'simple';
             console.log('CV Structure from results:', this.cvStructureInfo);
+            console.log('Nested CV Used:', this.nestedCVUsed);
+            console.log('Has fold_details:', !!this.cvStructureInfo.fold_details);
         }
 
         console.log('*** EQUATION DEBUG: Extracted parameters:', parameters);
@@ -521,11 +523,20 @@ class MMMApp {
         
         document.getElementById('results-grid').innerHTML = resultsHtml;
 
+        // Remove any existing CV details div first
+        const existingCvDetails = document.getElementById('cv-details-section');
+        if (existingCvDetails) {
+            existingCvDetails.remove();
+        }
+
         // Display CV structure details if available (after results)
         if (this.cvStructureInfo) {
+            console.log('Displaying CV structure details - cvStructureInfo:', this.cvStructureInfo);
+
             if (this.nestedCVUsed && this.cvStructureInfo.fold_details) {
+                console.log('Creating nested CV details table with', this.cvStructureInfo.fold_details.length, 'folds');
                 const cvDetailsHtml = `
-                    <div style="margin-top: 30px; padding: 20px; background: #e3f2fd; border: 2px solid #1976d2; border-radius: 8px;">
+                    <div id="cv-details-section" style="margin-top: 30px; padding: 20px; background: #e3f2fd; border: 2px solid #1976d2; border-radius: 8px;">
                         <h3 style="color: #1976d2; margin-bottom: 15px;">📊 Nested Cross-Validation Structure</h3>
                         <p style="margin-bottom: 10px;">Data: ${this.cvStructureInfo.total_weeks} weeks (${this.cvStructureInfo.total_days} days)</p>
                         <table style="width: 100%; font-size: 0.9em; border-collapse: collapse;">
@@ -556,10 +567,12 @@ class MMMApp {
 
                 // Insert CV details after results grid
                 document.getElementById('results-grid').insertAdjacentHTML('afterend', cvDetailsHtml);
+                console.log('Nested CV details table inserted');
             } else if (!this.nestedCVUsed) {
+                console.log('Creating simple CV info');
                 // Show simple CV info
                 const simpleCvHtml = `
-                    <div style="margin-top: 30px; padding: 20px; background: #fff3cd; border: 2px solid #ffc107; border-radius: 8px;">
+                    <div id="cv-details-section" style="margin-top: 30px; padding: 20px; background: #fff3cd; border: 2px solid #ffc107; border-radius: 8px;">
                         <h3 style="color: #856404; margin-bottom: 15px;">📊 Simple Cross-Validation</h3>
                         <p style="color: #856404;">
                             Used simple walk-forward cross-validation with ${this.cvStructureInfo.total_weeks || 'N/A'} weeks of data.<br>
@@ -568,7 +581,10 @@ class MMMApp {
                     </div>
                 `;
                 document.getElementById('results-grid').insertAdjacentHTML('afterend', simpleCvHtml);
+                console.log('Simple CV info inserted');
             }
+        } else {
+            console.log('No CV structure info available');
         }
 
         // Display parameter values if available
