@@ -353,10 +353,8 @@ class MMMModel:
         return baseline + channel_contributions
     
     def _select_best_parameters(self, cv_folds: List[CrossValidationFold]) -> ModelParameters:
-        """Selects best parameters based on cross-validation performance."""
-        # Average parameters across folds (simple approach)
-        # In practice, could weight by performance or use more sophisticated selection
-        
+        """Selects best parameters by averaging top-performing folds."""
+
         if not cv_folds:
             raise ValueError(
                 f"No cross-validation folds were created. This typically means your dataset "
@@ -365,10 +363,55 @@ class MMMModel:
                 f"Minimum required: {self.training_window_days + self.test_window_days} days for basic training, "
                 f"but more data (182+ days) is recommended for reliable model performance."
             )
-        
-        # Use parameters from best-performing fold
-        best_fold = min(cv_folds, key=lambda f: f.mape)
-        return best_fold.parameters
+
+        # Sort folds by MAPE (best first)
+        sorted_folds = sorted(cv_folds, key=lambda f: f.mape)
+
+        # Determine how many top folds to average (top 30% or minimum 3)
+        n_folds_to_average = max(3, len(sorted_folds) // 3)
+        n_folds_to_average = min(n_folds_to_average, len(sorted_folds))
+        top_folds = sorted_folds[:n_folds_to_average]
+
+        logger.info(f"Averaging parameters from top {n_folds_to_average} folds (MAPEs: {[f.mape for f in top_folds]})")
+
+        # Initialize averaged parameters
+        avg_alpha_baseline = sum(f.parameters.alpha_baseline for f in top_folds) / n_folds_to_average
+        avg_alpha_trend = sum(f.parameters.alpha_trend for f in top_folds) / n_folds_to_average
+
+        # Average channel-specific parameters
+        all_channels = list(top_folds[0].parameters.channel_alphas.keys())
+        avg_channel_alphas = {}
+        avg_channel_betas = {}
+        avg_channel_rs = {}
+
+        for channel in all_channels:
+            # Average alphas (linear coefficients)
+            avg_channel_alphas[channel] = sum(
+                f.parameters.channel_alphas[channel] for f in top_folds
+            ) / n_folds_to_average
+
+            # Average betas (saturation parameters) - exact average, not rounded to grid
+            avg_channel_betas[channel] = sum(
+                f.parameters.channel_betas[channel] for f in top_folds
+            ) / n_folds_to_average
+
+            # Average rs (adstock parameters) - exact average, not rounded to grid
+            avg_channel_rs[channel] = sum(
+                f.parameters.channel_rs[channel] for f in top_folds
+            ) / n_folds_to_average
+
+        # Create averaged parameters object
+        averaged_params = ModelParameters(
+            alpha_baseline=avg_alpha_baseline,
+            alpha_trend=avg_alpha_trend,
+            channel_alphas=avg_channel_alphas,
+            channel_betas=avg_channel_betas,
+            channel_rs=avg_channel_rs
+        )
+
+        logger.info(f"Averaged parameters created from {n_folds_to_average} best folds")
+
+        return averaged_params
     
     def _fit_final_model(self,
                         y: np.ndarray,
