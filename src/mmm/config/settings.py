@@ -268,17 +268,17 @@ class Settings:
         else:
             return 'other'
 
-    def get_parameter_grid_config(self, channel_name: str, custom_half_lives: Dict[str, float] = None) -> Dict[str, list]:
+    def get_parameter_grid_config(self, channel_name: str, custom_r_values: Dict[str, float] = None) -> Dict[str, list]:
         """Gets parameter grid configuration for a channel.
 
         Args:
             channel_name: Name of the channel
-            custom_half_lives: Optional dict of channel_name -> half_life_days
+            custom_r_values: Optional dict of channel_name -> r_value (center value for grid)
         """
         # Classify the channel type
         channel_type = self.classify_channel_type(channel_name)
 
-        # GRID_VERSION: v4.0 - Channel-specific grids with 5x5 combinations
+        # GRID_VERSION: v4.1 - Channel-specific grids with 5x5 combinations
         # Beta grids by channel type
         beta_grids = {
             "search_brand": [0.4, 0.5, 0.6, 0.7, 0.8],
@@ -289,7 +289,7 @@ class Settings:
             "other": [0.5, 0.6, 0.7, 0.8, 0.9]
         }
 
-        # Default r grids by channel type
+        # Default r grids by channel type (hardcoded for optimal coverage)
         default_r_grids = {
             "search_brand": [0.05, 0.1, 0.15, 0.2, 0.25],
             "search_non_brand": [0.1, 0.15, 0.2, 0.25, 0.3],
@@ -299,9 +299,9 @@ class Settings:
             "other": [0.1, 0.2, 0.3, 0.4, 0.5]
         }
 
-        # Get r values (use custom if provided)
-        if custom_half_lives and channel_name in custom_half_lives:
-            r_values = self.generate_r_from_half_life(custom_half_lives[channel_name])
+        # Get r values (use custom grid if provided)
+        if custom_r_values and channel_name in custom_r_values:
+            r_values = self.generate_r_grid_from_center(custom_r_values[channel_name])
         else:
             r_values = default_r_grids[channel_type]
 
@@ -310,22 +310,41 @@ class Settings:
             "r": r_values
         }
 
-    def generate_r_from_half_life(self, center_half_life: float) -> list:
-        """Generate 5 r values from a center half-life in days.
+    def generate_r_grid_from_center(self, center_r: float) -> list:
+        """Generate 5 r values around a center r value.
 
-        Formula: r = 0.5^(1/half_life)
+        Creates a grid with consistent spacing around the center value,
+        similar to the pattern used in default grids.
         """
         import numpy as np
 
-        # Generate 5 half-life values around the center
-        # Range from 50% to 150% of center value
-        half_lives = np.linspace(center_half_life * 0.5, center_half_life * 1.5, 5)
+        # Ensure center is in valid range
+        center_r = max(0.05, min(0.9, float(center_r)))
 
-        # Convert to r values
-        r_values = [round(0.5 ** (1/hl), 3) for hl in half_lives]
+        # Determine appropriate spacing based on center value
+        # Lower values get tighter spacing, higher values get wider spacing
+        if center_r <= 0.2:
+            # For low r values (fast decay), use tighter spacing
+            step = 0.05
+        elif center_r <= 0.4:
+            # For medium r values, use medium spacing
+            step = 0.1
+        else:
+            # For high r values (slow decay), use wider spacing
+            step = 0.1
 
-        # Ensure values are within reasonable bounds [0.01, 0.95]
-        r_values = [max(0.01, min(0.95, r)) for r in r_values]
+        # Generate 5 values centered around the custom value
+        # Pattern: [center - 2*step, center - step, center, center + step, center + 2*step]
+        r_values = [
+            center_r - 2 * step,
+            center_r - step,
+            center_r,
+            center_r + step,
+            center_r + 2 * step
+        ]
+
+        # Round and ensure values are within bounds [0.01, 0.95]
+        r_values = [round(max(0.01, min(0.95, r)), 3) for r in r_values]
 
         return r_values
     

@@ -235,7 +235,8 @@ class MMMApp {
                                                style="width: 80px; padding: 8px; border: 2px solid #cbd5e0; border-radius: 6px; text-align: center; font-weight: 500;
                                                       focus:border-color: #667eea; focus:outline: none; transition: border-color 0.2s;"
                                                onfocus="this.style.borderColor='#667eea'"
-                                               onblur="this.style.borderColor='#cbd5e0'">
+                                               onblur="this.style.borderColor='#cbd5e0'"
+                                               onchange="window.mmm.updateRGrid('${name}', this.value)">
                                     </td>
                                     <td style="padding: 15px; text-align: center;" id="impact-pct-${name}">
                                         <span style="background: #e6fffa; color: #047481; padding: 6px 12px; border-radius: 20px; font-weight: 600;">
@@ -303,7 +304,9 @@ class MMMApp {
         return colors[type] || colors['other'];
     }
 
-    updateRDisplay(channelName, centerR) {
+    updateRGrid(channelName, centerRValue) {
+        const centerR = parseFloat(centerRValue);
+
         // Update impact percentage display
         const impactElement = document.getElementById(`impact-pct-${channelName}`);
         if (impactElement) {
@@ -315,12 +318,24 @@ class MMMApp {
             `;
         }
 
-        // Generate 5 r values around the center
-        const rValues = [];
-        for (let i = 0.5; i <= 1.5; i += 0.25) {
-            const r = centerR * i;
-            rValues.push(Math.max(0.01, Math.min(0.95, r)));
+        // Generate 5 r values using same logic as backend
+        // This matches the generate_r_grid_from_center method in settings.py
+        let step;
+        if (centerR <= 0.2) {
+            step = 0.05;
+        } else if (centerR <= 0.4) {
+            step = 0.1;
+        } else {
+            step = 0.1;
         }
+
+        const rValues = [
+            centerR - 2 * step,
+            centerR - step,
+            centerR,
+            centerR + step,
+            centerR + 2 * step
+        ].map(r => Math.max(0.01, Math.min(0.95, r)));
 
         // Update grid display
         const rGridElement = document.getElementById(`r-grid-${channelName}`);
@@ -328,13 +343,18 @@ class MMMApp {
             rGridElement.innerHTML = `
                 <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                     ${rValues.map(r => `
-                        <span style="background: #edf2f7; color: #2d3748; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 0.9em;">
+                        <span style="background: #fff3cd; color: #856404; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 0.9em; border: 1px solid #ffc107;">
                             ${r.toFixed(3)}
                         </span>
                     `).join('')}
                 </div>
             `;
         }
+    }
+
+    updateRDisplay(channelName, centerR) {
+        // Legacy function - redirect to new updateRGrid
+        this.updateRGrid(channelName, centerR);
     }
 
     resetRValues() {

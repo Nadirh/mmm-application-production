@@ -53,10 +53,10 @@ async def train_model_background(upload_id: str, run_id: str, config: Dict[str, 
         processed_df = session["processed_df"]
         channel_info = session["channel_info"]
         
-        # Get parameter grids (with custom half-lives if provided)
+        # Get parameter grids (with custom r values if provided)
         processor = DataProcessor()
-        custom_half_lives = config.get("custom_half_lives", None)
-        channel_grids = processor.get_parameter_grid(channel_info, custom_half_lives)
+        custom_r_values = config.get("custom_r_values", None)
+        channel_grids = processor.get_parameter_grid(channel_info, custom_r_values)
         
         # Initialize model
         model = MMMModel(
@@ -420,19 +420,9 @@ async def train_model_with_custom_r_values(
     if upload_id not in upload_sessions:
         raise HTTPException(status_code=404, detail="Upload not found")
 
-    # Convert center r values to half-lives for the model
-    # r = 0.5^(1/half_life) => half_life = log(0.5) / log(r)
-    import math
-    custom_half_lives = {}
-    for channel, r_value in custom_r_center.items():
-        # Ensure r is in valid range
-        r_value = max(0.01, min(0.95, float(r_value)))
-        # Convert to half-life
-        half_life = math.log(0.5) / math.log(r_value) if r_value > 0 else 1.0
-        custom_half_lives[channel] = half_life
-
-    # Store custom half-lives in config
-    config["custom_half_lives"] = custom_half_lives
+    # Store custom r values directly in config
+    # The settings module will generate appropriate grids from these center values
+    config["custom_r_values"] = custom_r_center
 
     # Continue with normal training process
     upload_info = upload_sessions[upload_id]
