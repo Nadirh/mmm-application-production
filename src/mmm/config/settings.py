@@ -242,35 +242,35 @@ class Settings:
     
     def get_parameter_grid_config(self, channel_type: str) -> Dict[str, list]:
         """Gets parameter grid configuration for a channel type."""
-        # CORRECT PARAMETER GRIDS - Updated 2025-09-16 after production testing
-        # DO NOT REVERT: These values were confirmed working in recent production runs
-        # Beta: [0.7, 0.8, 0.9] - saturation parameters (higher values = more diminishing returns)
-        # R: [0.1, 0.2, 0.3] - adstock/memory parameters (higher values = more carryover effect)
-        # GRID_VERSION: v2.0 - Optimized ranges for better model performance
+        # CORRECT PARAMETER GRIDS - Updated 2025-09-17 with expanded ranges
+        # Beta: [0.6, 0.7, 0.8, 0.9] - saturation parameters (lower values = stronger saturation)
+        # R: [0.1, 0.2, 0.3, 0.4] - adstock/memory parameters (higher values = more carryover effect)
+        # GRID_VERSION: v3.0 - Expanded ranges for better saturation and carryover modeling
+        # Note: Training time will increase ~78% due to 16 combinations per channel vs previous 9
         grids = {
             "search_brand": {
-                "beta": [0.7, 0.8, 0.9],
-                "r": [0.1, 0.2, 0.3]
+                "beta": [0.6, 0.7, 0.8, 0.9],
+                "r": [0.1, 0.2, 0.3, 0.4]
             },
             "search_non_brand": {
-                "beta": [0.7, 0.8, 0.9],
-                "r": [0.1, 0.2, 0.3]
+                "beta": [0.6, 0.7, 0.8, 0.9],
+                "r": [0.1, 0.2, 0.3, 0.4]
             },
             "social": {
-                "beta": [0.7, 0.8, 0.9],
-                "r": [0.1, 0.2, 0.3]
+                "beta": [0.6, 0.7, 0.8, 0.9],
+                "r": [0.1, 0.2, 0.3, 0.4]
             },
             "tv_video": {
-                "beta": [0.7, 0.8, 0.9],
-                "r": [0.1, 0.2, 0.3]
+                "beta": [0.6, 0.7, 0.8, 0.9],
+                "r": [0.1, 0.2, 0.3, 0.4]
             },
             "display": {
-                "beta": [0.7, 0.8, 0.9],
-                "r": [0.1, 0.2, 0.3]
+                "beta": [0.6, 0.7, 0.8, 0.9],
+                "r": [0.1, 0.2, 0.3, 0.4]
             },
             "unknown": {
-                "beta": [0.7, 0.8, 0.9],
-                "r": [0.1, 0.2, 0.3]
+                "beta": [0.6, 0.7, 0.8, 0.9],
+                "r": [0.1, 0.2, 0.3, 0.4]
             }
         }
         

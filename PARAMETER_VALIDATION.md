@@ -2,11 +2,11 @@
 
 ## CRITICAL: Correct Parameter Values
 
-**As of 2025-09-16**, the CORRECT parameter grid values are:
+**As of 2025-09-17**, the CORRECT parameter grid values are:
 
 ```python
-"beta": [0.7, 0.8, 0.9]
-"r": [0.1, 0.2, 0.3]
+"beta": [0.6, 0.7, 0.8, 0.9]  # Expanded to include stronger saturation (0.6)
+"r": [0.1, 0.2, 0.3, 0.4]     # Expanded to include longer memory (0.4)
 ```
 
 **These values apply to ALL channel types:**
@@ -17,6 +17,11 @@
 - display
 - unknown
 
+## Grid Expansion Impact
+- Previous: 3×3 = 9 combinations per channel
+- Current: 4×4 = 16 combinations per channel
+- Training time increase: ~78% longer
+
 ## Validation
 
 Before any training run, verify that `src/mmm/config/settings.py` contains:
@@ -24,8 +29,8 @@ Before any training run, verify that `src/mmm/config/settings.py` contains:
 ```python
 grids = {
     "search_brand": {
-        "beta": [0.7, 0.8, 0.9],
-        "r": [0.1, 0.2, 0.3]
+        "beta": [0.6, 0.7, 0.8, 0.9],
+        "r": [0.1, 0.2, 0.3, 0.4]
     },
     # ... (same for all other channel types)
 }
