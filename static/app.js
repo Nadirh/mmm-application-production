@@ -7,6 +7,8 @@ class MMMApp {
         this.uploadId = null;
         this.runId = null;
         this.progressInterval = null;
+        this.cvStructureInfo = null;  // Store CV structure info
+        this.nestedCVUsed = false;    // Track if nested CV was used
 
         // Add VISIBLE indicator that JS is working
         this.addVisibleDebugIndicator();
@@ -362,6 +364,10 @@ class MMMApp {
     }
 
     displayCVStructure(cvInfo) {
+        // Store the CV info for later display
+        this.cvStructureInfo = cvInfo;
+        this.nestedCVUsed = cvInfo.method !== 'simple';
+
         // Create a formatted display of the CV structure
         let message = `📊 Cross-Validation Structure:<br>`;
         message += `Data: ${cvInfo.total_weeks} weeks (${cvInfo.total_days} days)<br>`;
@@ -479,21 +485,70 @@ class MMMApp {
                 <div class="metric-value">${(performance.mape || performance.final_mape)?.toFixed(3) || 'N/A'}</div>
                 <div class="metric-label">Final MAPE</div>
             </div>
-            <div class="metric-card" style="background: #e3f2fd; border: 2px solid #1976d2;">
-                <div class="metric-value" style="color: #1976d2; font-size: 1.8rem;">
-                    ${performance.n_folds_averaged || 'N/A'}
-                </div>
-                <div class="metric-label" style="color: #1976d2; font-weight: bold;">
-                    Folds Averaged<br>
-                    <span style="font-size: 0.85rem; font-weight: normal;">
-                        (Top ${performance.n_folds_averaged || 'N/A'} best-performing folds)
-                    </span>
-                </div>
-            </div>
+            ${this.nestedCVUsed ?
+                `<div class="metric-card" style="background: #e3f2fd; border: 2px solid #1976d2;">
+                    <div class="metric-value" style="color: #1976d2; font-size: 1.8rem;">
+                        ${this.cvStructureInfo?.n_outer_folds || 'N/A'}
+                    </div>
+                    <div class="metric-label" style="color: #1976d2; font-weight: bold;">
+                        Nested CV Folds<br>
+                        <span style="font-size: 0.85rem; font-weight: normal;">
+                            (${this.cvStructureInfo?.total_weeks || 'N/A'} weeks of data)
+                        </span>
+                    </div>
+                </div>` :
+                `<div class="metric-card" style="background: #fff3cd; border: 2px solid #ffc107;">
+                    <div class="metric-value" style="color: #856404; font-size: 1.8rem;">
+                        ${performance.n_folds_averaged || 'N/A'}
+                    </div>
+                    <div class="metric-label" style="color: #856404; font-weight: bold;">
+                        Simple CV<br>
+                        <span style="font-size: 0.85rem; font-weight: normal;">
+                            (Top ${performance.n_folds_averaged || 'N/A'} folds averaged)
+                        </span>
+                    </div>
+                </div>`
+            }
         `;
         
         document.getElementById('results-grid').innerHTML = resultsHtml;
-        
+
+        // Display CV structure details if available (after results)
+        if (this.cvStructureInfo && this.nestedCVUsed) {
+            const cvDetailsHtml = `
+                <div style="margin-top: 30px; padding: 20px; background: #e3f2fd; border: 2px solid #1976d2; border-radius: 8px;">
+                    <h3 style="color: #1976d2; margin-bottom: 15px;">📊 Nested Cross-Validation Details</h3>
+                    <p style="margin-bottom: 10px;">Data: ${this.cvStructureInfo.total_weeks} weeks (${this.cvStructureInfo.total_days} days)</p>
+                    <table style="width: 100%; font-size: 0.9em; border-collapse: collapse;">
+                        <tr style="background: #bbdefb;">
+                            <th style="padding: 8px; border: 1px solid #1976d2;">Fold</th>
+                            <th style="padding: 8px; border: 1px solid #1976d2;">Weeks</th>
+                            <th style="padding: 8px; border: 1px solid #1976d2;">Outer Train</th>
+                            <th style="padding: 8px; border: 1px solid #1976d2;">Outer Test</th>
+                            <th style="padding: 8px; border: 1px solid #1976d2;">Inner Train</th>
+                            <th style="padding: 8px; border: 1px solid #1976d2;">Inner Test</th>
+                        </tr>
+                        ${this.cvStructureInfo.fold_details.map(fold => `
+                            <tr style="background: white;">
+                                <td style="padding: 8px; border: 1px solid #1976d2; text-align: center;">${fold.fold}</td>
+                                <td style="padding: 8px; border: 1px solid #1976d2; text-align: center;">${fold.weeks}</td>
+                                <td style="padding: 8px; border: 1px solid #1976d2; text-align: center;">${fold.outer_train}</td>
+                                <td style="padding: 8px; border: 1px solid #1976d2; text-align: center;">${fold.outer_test}</td>
+                                <td style="padding: 8px; border: 1px solid #1976d2; text-align: center;">${fold.inner_train}</td>
+                                <td style="padding: 8px; border: 1px solid #1976d2; text-align: center;">${fold.inner_test}</td>
+                            </tr>
+                        `).join('')}
+                    </table>
+                    <p style="margin-top: 15px; font-size: 0.9em; color: #555;">
+                        <strong>Note:</strong> Parameters were selected using inner folds, then evaluated on outer test sets for unbiased performance estimates.
+                    </p>
+                </div>
+            `;
+
+            // Insert CV details after results grid
+            document.getElementById('results-grid').insertAdjacentHTML('afterend', cvDetailsHtml);
+        }
+
         // Display parameter values if available
         console.log('*** EQUATION DEBUG: Checking parameters for equation display:', parameters);
         console.log('*** EQUATION DEBUG: Parameters exists?', !!parameters);
