@@ -363,11 +363,11 @@ async def train_model(
 async def get_channel_classifications(upload_id: str) -> Dict[str, Any]:
     """Get channel classifications and default half-lives for an uploaded file."""
 
-    if upload_id not in uploaded_files:
+    if upload_id not in upload_sessions:
         raise HTTPException(status_code=404, detail="Upload not found")
 
-    upload_info = uploaded_files[upload_id]
-    df = upload_info["data"]
+    upload_info = upload_sessions[upload_id]
+    df = upload_info["processed_df"]
 
     # Extract channel names
     channel_columns = [col for col in df.columns if col not in ["date", "revenue"]]
@@ -416,15 +416,15 @@ async def train_model_with_custom_half_lives(
     if not upload_id:
         raise HTTPException(status_code=400, detail="upload_id is required")
 
-    if upload_id not in uploaded_files:
+    if upload_id not in upload_sessions:
         raise HTTPException(status_code=404, detail="Upload not found")
 
     # Store custom half-lives in config
     config["custom_half_lives"] = custom_half_lives
 
     # Continue with normal training process
-    upload_info = uploaded_files[upload_id]
-    df = upload_info["data"]
+    upload_info = upload_sessions[upload_id]
+    df = upload_info["processed_df"]
 
     # Validate data sufficiency for training with specified window sizes
     total_days = len(df)
