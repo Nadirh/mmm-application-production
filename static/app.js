@@ -251,39 +251,6 @@ class MMMApp {
                         </tbody>
                     </table>
                 </div>
-                <div style="margin-top: 20px; padding: 20px; background: rgba(255, 255, 255, 0.95); border-radius: 8px;">
-                    <h4 style="color: #2d3748; margin-bottom: 15px;">💡 Half-Life Guidelines</h4>
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px;">
-                        <div style="padding: 10px; background: #fff5f5; border-left: 3px solid #fc8181; border-radius: 4px;">
-                            <strong style="color: #c53030;">Search Brand</strong><br>
-                            <span style="color: #742a2a; font-size: 0.9em;">0.2-0.4 days • Immediate impact</span>
-                        </div>
-                        <div style="padding: 10px; background: #fffaf0; border-left: 3px solid #f6ad55; border-radius: 4px;">
-                            <strong style="color: #c05621;">Search Non-Brand</strong><br>
-                            <span style="color: #7c2d12; font-size: 0.9em;">0.3-0.5 days • Short memory</span>
-                        </div>
-                        <div style="padding: 10px; background: #faf5ff; border-left: 3px solid #b794f4; border-radius: 4px;">
-                            <strong style="color: #6b46c1;">Social</strong><br>
-                            <span style="color: #44337a; font-size: 0.9em;">0.5-1.5 days • Viral effects persist</span>
-                        </div>
-                        <div style="padding: 10px; background: #f0fff4; border-left: 3px solid #68d391; border-radius: 4px;">
-                            <strong style="color: #22543d;">Display</strong><br>
-                            <span style="color: #1a3629; font-size: 0.9em;">1.0-2.0 days • Retargeting effects</span>
-                        </div>
-                        <div style="padding: 10px; background: #ebf8ff; border-left: 3px solid #4299e1; border-radius: 4px;">
-                            <strong style="color: #2a4e7c;">TV/Video/YouTube</strong><br>
-                            <span style="color: #1a365d; font-size: 0.9em;">2.0-5.0 days • Brand building</span>
-                        </div>
-                    </div>
-                    <div style="margin-top: 20px; padding: 15px; background: #f7fafc; border: 1px solid #cbd5e0; border-radius: 6px;">
-                        <strong style="color: #2d3748;">Formula:</strong>
-                        <code style="background: #2d3748; color: #68d391; padding: 4px 8px; border-radius: 4px; margin-left: 10px;">r = 0.5^(1/half_life_days)</code>
-                        <br>
-                        <span style="color: #718096; font-size: 0.9em; margin-top: 5px; display: inline-block;">
-                            Example: Half-life of 2 days → r = 0.707 (70.7% of effect carries to next day)
-                        </span>
-                    </div>
-                </div>
                 <div style="text-align: center; margin-top: 20px;">
                     <button id="reset-halflifes"
                             style="background: white; color: #667eea; padding: 12px 30px; border: 2px solid #667eea;
