@@ -756,7 +756,7 @@ class MMMApp {
                 console.log(`✅ Adding confidence intervals for ${channel}`);
 
                 datasets.push({
-                    label: '95% Confidence Interval (Upper)',
+                    label: '95% CI (Bootstrap 500 samples) - Upper',
                     data: confidenceIntervals.upper,
                     borderColor: 'rgba(45, 90, 160, 0.4)',
                     backgroundColor: 'transparent',
@@ -768,7 +768,7 @@ class MMMApp {
                 });
 
                 datasets.push({
-                    label: '95% Confidence Interval (Lower)',
+                    label: '95% CI (Bootstrap 500 samples) - Lower',
                     data: confidenceIntervals.lower,
                     borderColor: 'rgba(45, 90, 160, 0.4)',
                     backgroundColor: 'rgba(45, 90, 160, 0.1)',
@@ -820,8 +820,12 @@ class MMMApp {
                         plugins: {
                             title: {
                                 display: true,
-                                text: `${this.formatChannelName(channel)} Response Curve${avgSpend ? ` (28-day avg: $${avgSpend.toFixed(0)}/day)` : ''}`,
-                                font: { size: 16, weight: 'bold' }
+                                text: [
+                                    `${this.formatChannelName(channel)} Response Curve${avgSpend ? ` (28-day avg: $${avgSpend.toFixed(0)}/day)` : ''}`,
+                                    confidenceIntervals ? '🔬 Bootstrap CI Active (500 samples)' : '⚠️ Using Placeholder CI'
+                                ],
+                                font: { size: 16, weight: 'bold' },
+                                color: confidenceIntervals ? '#2d5aa0' : '#ff6b6b'
                             },
                             legend: {
                                 display: true,
@@ -829,13 +833,13 @@ class MMMApp {
                                 labels: {
                                     filter: function(legendItem, chartData) {
                                         // Only show main curve and confidence interval labels (simplified)
-                                        return legendItem.text !== '95% Confidence Interval (Upper)';
+                                        return legendItem.text !== '95% CI (Bootstrap 500 samples) - Upper';
                                     },
                                     generateLabels: function(chart) {
                                         const labels = Chart.defaults.plugins.legend.labels.generateLabels(chart);
                                         return labels.map(label => {
-                                            if (label.text === '95% Confidence Interval (Lower)') {
-                                                label.text = '95% Confidence Interval';
+                                            if (label.text === '95% CI (Bootstrap 500 samples) - Lower') {
+                                                label.text = '95% CI (Bootstrap Method)';
                                             }
                                             return label;
                                         });
