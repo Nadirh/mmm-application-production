@@ -369,8 +369,10 @@ async def get_channel_classifications(upload_id: str) -> Dict[str, Any]:
     upload_info = upload_sessions[upload_id]
     df = upload_info["processed_df"]
 
-    # Extract channel names
-    channel_columns = [col for col in df.columns if col not in ["date", "revenue"]]
+    # Extract only paid channel names (exclude non-spend variables)
+    non_spend_columns = {'date', 'revenue', 'profit', 'days_since_start', 'day_of_week',
+                        'is_weekend', 'month', 'quarter', 'week_of_month', 'season'}
+    channel_columns = [col for col in df.columns if col not in non_spend_columns]
 
     # Classify channels and get default half-lives
     channel_info = {}
@@ -390,7 +392,6 @@ async def get_channel_classifications(upload_id: str) -> Dict[str, Any]:
         channel_info[channel] = {
             "type": channel_type,
             "default_half_life": default_half_lives[channel_type],
-            "beta_grid": settings.get_parameter_grid_config(channel, None)["beta"],
             "default_r_grid": settings.get_parameter_grid_config(channel, None)["r"]
         }
 

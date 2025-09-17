@@ -193,59 +193,107 @@ class MMMApp {
 
     displayChannelClassifications(channels) {
         const classificationsHtml = `
-            <div style="margin-top: 30px; padding: 20px; background: #f8f9fa; border: 2px solid #28a745; border-radius: 8px;">
-                <h3 style="color: #28a745; margin-bottom: 15px;">🌟 Channel Classification & Half-Life Customization</h3>
-                <p style="margin-bottom: 15px;">Channels have been classified based on their names. You can adjust the half-life (days) for carryover effects:</p>
-                <table style="width: 100%; border-collapse: collapse;">
-                    <thead>
-                        <tr style="background: #e9ecef;">
-                            <th style="padding: 10px; text-align: left; border: 1px solid #dee2e6;">Channel</th>
-                            <th style="padding: 10px; text-align: left; border: 1px solid #dee2e6;">Type</th>
-                            <th style="padding: 10px; text-align: left; border: 1px solid #dee2e6;">Default Half-Life (days)</th>
-                            <th style="padding: 10px; text-align: left; border: 1px solid #dee2e6;">Custom Half-Life</th>
-                            <th style="padding: 10px; text-align: left; border: 1px solid #dee2e6;">Beta Grid</th>
-                            <th style="padding: 10px; text-align: left; border: 1px solid #dee2e6;">R Grid (from half-life)</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${Object.entries(channels).map(([name, info]) => `
-                            <tr>
-                                <td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">${this.formatChannelName(name)}</td>
-                                <td style="padding: 10px; border: 1px solid #dee2e6;">
-                                    <span style="background: ${this.getTypeColor(info.type)}; color: white; padding: 2px 8px; border-radius: 4px;">
-                                        ${info.type.replace(/_/g, ' ')}
-                                    </span>
-                                </td>
-                                <td style="padding: 10px; border: 1px solid #dee2e6; text-align: center;">${info.default_half_life}</td>
-                                <td style="padding: 10px; border: 1px solid #dee2e6;">
-                                    <input type="number"
-                                           id="halflife-${name}"
-                                           class="halflife-input"
-                                           min="0.1"
-                                           max="10"
-                                           step="0.1"
-                                           value="${info.default_half_life}"
-                                           style="width: 80px; padding: 5px;">
-                                </td>
-                                <td style="padding: 10px; border: 1px solid #dee2e6; font-size: 0.9em;">[${info.beta_grid.join(', ')}]</td>
-                                <td style="padding: 10px; border: 1px solid #dee2e6; font-size: 0.9em;" id="r-grid-${name}">[${info.default_r_grid.map(r => r.toFixed(3)).join(', ')}]</td>
+            <div style="margin-top: 30px; padding: 25px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; box-shadow: 0 10px 40px rgba(0,0,0,0.15);">
+                <h3 style="color: white; margin-bottom: 20px; font-size: 1.4rem;">🌟 Channel Memory (Half-Life) Customization</h3>
+                <p style="color: #f0f0f0; margin-bottom: 20px;">Adjust how long each channel's effects persist. Half-life = days until 50% of effect remains.</p>
+                <div style="background: white; border-radius: 8px; overflow: hidden;">
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <thead>
+                            <tr style="background: linear-gradient(90deg, #4a5568 0%, #2d3748 100%); color: white;">
+                                <th style="padding: 15px; text-align: left; font-weight: 600;">Channel</th>
+                                <th style="padding: 15px; text-align: center; font-weight: 600;">Type</th>
+                                <th style="padding: 15px; text-align: center; font-weight: 600;">Default<br>Half-Life</th>
+                                <th style="padding: 15px; text-align: center; font-weight: 600;">Custom<br>Half-Life</th>
+                                <th style="padding: 15px; text-align: left; font-weight: 600;">Adstock (r) Values<br><span style="font-size: 0.8em; font-weight: normal;">Generated from half-life</span></th>
                             </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-                <div style="margin-top: 15px; padding: 15px; background: #e7f5ff; border-left: 4px solid #339af0; border-radius: 4px;">
-                    <strong>Half-Life Guide:</strong>
-                    <ul style="margin-top: 10px; margin-bottom: 0;">
-                        <li><strong>Search (Brand):</strong> 0.2-0.4 days - Very short memory, immediate impact</li>
-                        <li><strong>Search (Non-Brand):</strong> 0.3-0.5 days - Short memory</li>
-                        <li><strong>Social:</strong> 0.5-1.5 days - Medium memory, viral effects can persist</li>
-                        <li><strong>Display:</strong> 1.0-2.0 days - Medium memory with retargeting</li>
-                        <li><strong>TV/Video/YouTube:</strong> 2.0-5.0 days - Long memory, brand building effects</li>
-                    </ul>
+                        </thead>
+                        <tbody>
+                            ${Object.entries(channels).map(([name, info], index) => `
+                                <tr style="background: ${index % 2 === 0 ? '#f8f9fa' : 'white'}; transition: background 0.2s;"
+                                    onmouseover="this.style.background='#e8f4ff'"
+                                    onmouseout="this.style.background='${index % 2 === 0 ? '#f8f9fa' : 'white'}'">
+                                    <td style="padding: 15px; font-weight: 600; color: #2d3748;">
+                                        ${this.formatChannelName(name)}
+                                    </td>
+                                    <td style="padding: 15px; text-align: center;">
+                                        <span style="background: ${this.getTypeColor(info.type)}; color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.85em; font-weight: 500;">
+                                            ${info.type.replace(/_/g, ' ').toUpperCase()}
+                                        </span>
+                                    </td>
+                                    <td style="padding: 15px; text-align: center; font-weight: 500; color: #4a5568;">
+                                        ${info.default_half_life} days
+                                    </td>
+                                    <td style="padding: 15px; text-align: center;">
+                                        <input type="number"
+                                               id="halflife-${name}"
+                                               class="halflife-input"
+                                               min="0.1"
+                                               max="10"
+                                               step="0.1"
+                                               value="${info.default_half_life}"
+                                               style="width: 90px; padding: 8px; border: 2px solid #cbd5e0; border-radius: 6px; text-align: center; font-weight: 500;
+                                                      focus:border-color: #667eea; focus:outline: none; transition: border-color 0.2s;"
+                                               onfocus="this.style.borderColor='#667eea'"
+                                               onblur="this.style.borderColor='#cbd5e0'">
+                                        <span style="margin-left: 5px; color: #718096;">days</span>
+                                    </td>
+                                    <td style="padding: 15px;" id="r-grid-${name}">
+                                        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                            ${info.default_r_grid.map(r => `
+                                                <span style="background: #edf2f7; color: #2d3748; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 0.9em;">
+                                                    ${r.toFixed(3)}
+                                                </span>
+                                            `).join('')}
+                                        </div>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
                 </div>
-                <button id="reset-halflifes" class="btn btn-secondary" style="margin-top: 15px;" onclick="app.resetHalfLifes()">
-                    Reset to Defaults
-                </button>
+                <div style="margin-top: 20px; padding: 20px; background: rgba(255, 255, 255, 0.95); border-radius: 8px;">
+                    <h4 style="color: #2d3748; margin-bottom: 15px;">💡 Half-Life Guidelines</h4>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px;">
+                        <div style="padding: 10px; background: #fff5f5; border-left: 3px solid #fc8181; border-radius: 4px;">
+                            <strong style="color: #c53030;">Search Brand</strong><br>
+                            <span style="color: #742a2a; font-size: 0.9em;">0.2-0.4 days • Immediate impact</span>
+                        </div>
+                        <div style="padding: 10px; background: #fffaf0; border-left: 3px solid #f6ad55; border-radius: 4px;">
+                            <strong style="color: #c05621;">Search Non-Brand</strong><br>
+                            <span style="color: #7c2d12; font-size: 0.9em;">0.3-0.5 days • Short memory</span>
+                        </div>
+                        <div style="padding: 10px; background: #faf5ff; border-left: 3px solid #b794f4; border-radius: 4px;">
+                            <strong style="color: #6b46c1;">Social</strong><br>
+                            <span style="color: #44337a; font-size: 0.9em;">0.5-1.5 days • Viral effects persist</span>
+                        </div>
+                        <div style="padding: 10px; background: #f0fff4; border-left: 3px solid #68d391; border-radius: 4px;">
+                            <strong style="color: #22543d;">Display</strong><br>
+                            <span style="color: #1a3629; font-size: 0.9em;">1.0-2.0 days • Retargeting effects</span>
+                        </div>
+                        <div style="padding: 10px; background: #ebf8ff; border-left: 3px solid #4299e1; border-radius: 4px;">
+                            <strong style="color: #2a4e7c;">TV/Video/YouTube</strong><br>
+                            <span style="color: #1a365d; font-size: 0.9em;">2.0-5.0 days • Brand building</span>
+                        </div>
+                    </div>
+                    <div style="margin-top: 20px; padding: 15px; background: #f7fafc; border: 1px solid #cbd5e0; border-radius: 6px;">
+                        <strong style="color: #2d3748;">Formula:</strong>
+                        <code style="background: #2d3748; color: #68d391; padding: 4px 8px; border-radius: 4px; margin-left: 10px;">r = 0.5^(1/half_life_days)</code>
+                        <br>
+                        <span style="color: #718096; font-size: 0.9em; margin-top: 5px; display: inline-block;">
+                            Example: Half-life of 2 days → r = 0.707 (70.7% of effect carries to next day)
+                        </span>
+                    </div>
+                </div>
+                <div style="text-align: center; margin-top: 20px;">
+                    <button id="reset-halflifes"
+                            style="background: white; color: #667eea; padding: 12px 30px; border: 2px solid #667eea;
+                                   border-radius: 6px; font-weight: 600; cursor: pointer; transition: all 0.3s;"
+                            onmouseover="this.style.background='#667eea'; this.style.color='white';"
+                            onmouseout="this.style.background='white'; this.style.color='#667eea';"
+                            onclick="app.resetHalfLifes()">
+                        ↺ Reset to Defaults
+                    </button>
+                </div>
             </div>
         `;
 
@@ -291,10 +339,18 @@ class MMMApp {
             rValues.push(Math.max(0.01, Math.min(0.95, r)));
         }
 
-        // Update display
+        // Update display with formatted badges
         const rGridElement = document.getElementById(`r-grid-${channelName}`);
         if (rGridElement) {
-            rGridElement.textContent = '[' + rValues.map(r => r.toFixed(3)).join(', ') + ']';
+            rGridElement.innerHTML = `
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                    ${rValues.map(r => `
+                        <span style="background: #edf2f7; color: #2d3748; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 0.9em;">
+                            ${r.toFixed(3)}
+                        </span>
+                    `).join('')}
+                </div>
+            `;
         }
     }
 
