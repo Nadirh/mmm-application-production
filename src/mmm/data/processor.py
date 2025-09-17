@@ -8,6 +8,8 @@ import numpy as np
 from enum import Enum
 from dataclasses import dataclass
 
+from mmm.config.settings import settings
+
 
 class ChannelType(Enum):
     SEARCH_BRAND = "search_brand"
@@ -179,44 +181,19 @@ class DataProcessor:
     def get_parameter_grid(self, channel_info: Dict[str, ChannelInfo]) -> Dict[str, Dict[str, List[float]]]:
         """
         Returns parameter grid for optimization based on channel types.
-        
+
         Args:
             channel_info: Dictionary of channel information
-            
+
         Returns:
             Dictionary mapping channel names to their parameter grids
         """
-        # Parameter grids by channel type (beta: saturation, r: adstock)
-        # 3x3 grid: all channels use same beta and r values for fast training
-        type_grids = {
-            ChannelType.SEARCH_BRAND: {
-                "beta": [0.7, 0.8, 0.9],
-                "r": [0.1, 0.2, 0.3]
-            },
-            ChannelType.SEARCH_NON_BRAND: {
-                "beta": [0.7, 0.8, 0.9],
-                "r": [0.1, 0.2, 0.3]
-            },
-            ChannelType.SOCIAL: {
-                "beta": [0.7, 0.8, 0.9],
-                "r": [0.1, 0.2, 0.3]
-            },
-            ChannelType.TV_VIDEO: {
-                "beta": [0.7, 0.8, 0.9],
-                "r": [0.1, 0.2, 0.3]
-            },
-            ChannelType.DISPLAY: {
-                "beta": [0.7, 0.8, 0.9],
-                "r": [0.1, 0.2, 0.3]
-            },
-            ChannelType.UNKNOWN: {
-                "beta": [0.7, 0.8, 0.9],
-                "r": [0.1, 0.2, 0.3]
-            }
-        }
-        
+        # Use settings.py as the single source of truth for parameter grids
         channel_grids = {}
         for channel_name, info in channel_info.items():
-            channel_grids[channel_name] = type_grids[info.type]
-        
+            # Get parameter grid from settings based on channel type
+            channel_grids[channel_name] = settings.get_parameter_grid_config(
+                info.type.value
+            )
+
         return channel_grids

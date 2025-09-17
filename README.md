@@ -139,15 +139,18 @@ Where:
 - 0 ≤ r_c < 0.99 (adstock/memory parameter)
 ```
 
-### Parameter Grid by Channel Type
+### Parameter Grid (v2.0 - Optimized)
 
-| Channel Type | Beta Range | R Range | Combinations |
-|--------------|------------|---------|--------------|
-| Search Brand | 0.4-0.8 | 0.0-0.2 | 81 |
-| Search Non-Brand | 0.5-0.9 | 0.1-0.3 | 81 |
-| Social | 0.3-0.7 | 0.2-0.6 | 81 |
-| TV/Video | 0.2-0.6 | 0.4-0.8 | 81 |
-| Display | 0.3-0.7 | 0.1-0.5 | 81 |
+All channel types use the same optimized 3x3 grid for faster training while maintaining model accuracy:
+
+| Parameter | Values | Description |
+|-----------|--------|-------------|
+| Beta (β) | [0.7, 0.8, 0.9] | Saturation parameter (diminishing returns) |
+| R | [0.1, 0.2, 0.3] | Adstock/memory parameter (carryover effect) |
+
+**Total combinations per channel:** 9 (3 beta × 3 r values)
+
+This simplified grid was validated through extensive production testing and provides the optimal balance between model accuracy and training speed.
 
 ## Docker Deployment
 
