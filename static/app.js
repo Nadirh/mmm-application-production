@@ -194,17 +194,18 @@ class MMMApp {
     displayChannelClassifications(channels) {
         const classificationsHtml = `
             <div style="margin-top: 30px; padding: 25px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; box-shadow: 0 10px 40px rgba(0,0,0,0.15);">
-                <h3 style="color: white; margin-bottom: 20px; font-size: 1.4rem;">🌟 Channel Memory (Half-Life) Customization</h3>
-                <p style="color: #f0f0f0; margin-bottom: 20px;">Adjust how long each channel's effects persist. Half-life = days until 50% of effect remains.</p>
+                <h3 style="color: white; margin-bottom: 20px; font-size: 1.4rem;">🌟 Channel Memory (Adstock) Customization</h3>
+                <p style="color: #f0f0f0; margin-bottom: 20px;">The r value represents how much of today's advertising effect carries over to tomorrow (e.g., r=0.3 means 30% of impact persists to the next day).</p>
                 <div style="background: white; border-radius: 8px; overflow: hidden;">
                     <table style="width: 100%; border-collapse: collapse;">
                         <thead>
                             <tr style="background: linear-gradient(90deg, #4a5568 0%, #2d3748 100%); color: white;">
                                 <th style="padding: 15px; text-align: left; font-weight: 600;">Channel</th>
                                 <th style="padding: 15px; text-align: center; font-weight: 600;">Type</th>
-                                <th style="padding: 15px; text-align: center; font-weight: 600;">Default<br>Half-Life</th>
-                                <th style="padding: 15px; text-align: center; font-weight: 600;">Custom<br>Half-Life</th>
-                                <th style="padding: 15px; text-align: left; font-weight: 600;">Adstock (r) Values<br><span style="font-size: 0.8em; font-weight: normal;">Generated from half-life</span></th>
+                                <th style="padding: 15px; text-align: center; font-weight: 600;">Default r</th>
+                                <th style="padding: 15px; text-align: center; font-weight: 600;">Custom r<br><span style="font-size: 0.8em; font-weight: normal;">(0.01 to 0.95)</span></th>
+                                <th style="padding: 15px; text-align: center; font-weight: 600;">Impact %</th>
+                                <th style="padding: 15px; text-align: left; font-weight: 600;">Grid Values<br><span style="font-size: 0.8em; font-weight: normal;">5 values for optimization</span></th>
                             </tr>
                         </thead>
                         <tbody>
@@ -221,25 +222,29 @@ class MMMApp {
                                         </span>
                                     </td>
                                     <td style="padding: 15px; text-align: center; font-weight: 500; color: #4a5568;">
-                                        ${info.default_half_life} days
+                                        ${info.default_r.toFixed(2)}
                                     </td>
                                     <td style="padding: 15px; text-align: center;">
                                         <input type="number"
-                                               id="halflife-${name}"
-                                               class="halflife-input"
-                                               min="0.1"
-                                               max="10"
-                                               step="0.1"
-                                               value="${info.default_half_life}"
-                                               style="width: 90px; padding: 8px; border: 2px solid #cbd5e0; border-radius: 6px; text-align: center; font-weight: 500;
+                                               id="r-value-${name}"
+                                               class="r-input"
+                                               min="0.01"
+                                               max="0.95"
+                                               step="0.05"
+                                               value="${info.default_r}"
+                                               style="width: 80px; padding: 8px; border: 2px solid #cbd5e0; border-radius: 6px; text-align: center; font-weight: 500;
                                                       focus:border-color: #667eea; focus:outline: none; transition: border-color 0.2s;"
                                                onfocus="this.style.borderColor='#667eea'"
                                                onblur="this.style.borderColor='#cbd5e0'">
-                                        <span style="margin-left: 5px; color: #718096;">days</span>
+                                    </td>
+                                    <td style="padding: 15px; text-align: center;" id="impact-pct-${name}">
+                                        <span style="background: #e6fffa; color: #047481; padding: 6px 12px; border-radius: 20px; font-weight: 600;">
+                                            ${(info.default_r * 100).toFixed(0)}% next day
+                                        </span>
                                     </td>
                                     <td style="padding: 15px;" id="r-grid-${name}">
                                         <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                                            ${info.default_r_grid.map(r => `
+                                            ${info.r_grid.map(r => `
                                                 <span style="background: #edf2f7; color: #2d3748; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 0.9em;">
                                                     ${r.toFixed(3)}
                                                 </span>
@@ -252,12 +257,12 @@ class MMMApp {
                     </table>
                 </div>
                 <div style="text-align: center; margin-top: 20px;">
-                    <button id="reset-halflifes"
+                    <button id="reset-r-values"
                             style="background: white; color: #667eea; padding: 12px 30px; border: 2px solid #667eea;
                                    border-radius: 6px; font-weight: 600; cursor: pointer; transition: all 0.3s;"
                             onmouseover="this.style.background='#667eea'; this.style.color='white';"
                             onmouseout="this.style.background='white'; this.style.color='#667eea';"
-                            onclick="app.resetHalfLifes()">
+                            onclick="app.resetRValues()">
                         ↺ Reset to Defaults
                     </button>
                 </div>
@@ -274,12 +279,13 @@ class MMMApp {
         // Store channel data for later use
         this.channelData = channels;
 
-        // Add event listeners for half-life inputs
+        // Add event listeners for r value inputs
         Object.keys(channels).forEach(name => {
-            const input = document.getElementById(`halflife-${name}`);
+            const input = document.getElementById(`r-value-${name}`);
             if (input) {
                 input.addEventListener('input', (e) => {
-                    this.updateRGrid(name, parseFloat(e.target.value));
+                    const rValue = parseFloat(e.target.value);
+                    this.updateRDisplay(name, rValue);
                 });
             }
         });
@@ -297,16 +303,26 @@ class MMMApp {
         return colors[type] || colors['other'];
     }
 
-    updateRGrid(channelName, halfLife) {
-        // Generate 5 r values from half-life
+    updateRDisplay(channelName, centerR) {
+        // Update impact percentage display
+        const impactElement = document.getElementById(`impact-pct-${channelName}`);
+        if (impactElement) {
+            const pct = (centerR * 100).toFixed(0);
+            impactElement.innerHTML = `
+                <span style="background: #e6fffa; color: #047481; padding: 6px 12px; border-radius: 20px; font-weight: 600;">
+                    ${pct}% next day
+                </span>
+            `;
+        }
+
+        // Generate 5 r values around the center
         const rValues = [];
         for (let i = 0.5; i <= 1.5; i += 0.25) {
-            const hl = halfLife * i;
-            const r = Math.pow(0.5, 1/hl);
+            const r = centerR * i;
             rValues.push(Math.max(0.01, Math.min(0.95, r)));
         }
 
-        // Update display with formatted badges
+        // Update grid display
         const rGridElement = document.getElementById(`r-grid-${channelName}`);
         if (rGridElement) {
             rGridElement.innerHTML = `
@@ -321,13 +337,13 @@ class MMMApp {
         }
     }
 
-    resetHalfLifes() {
+    resetRValues() {
         if (this.channelData) {
             Object.entries(this.channelData).forEach(([name, info]) => {
-                const input = document.getElementById(`halflife-${name}`);
+                const input = document.getElementById(`r-value-${name}`);
                 if (input) {
-                    input.value = info.default_half_life;
-                    this.updateRGrid(name, info.default_half_life);
+                    input.value = info.default_r;
+                    this.updateRDisplay(name, info.default_r);
                 }
             });
         }
@@ -339,15 +355,15 @@ class MMMApp {
             return;
         }
 
-        // Collect custom half-lives
-        const customHalfLives = {};
+        // Collect custom r values
+        const customRValues = {};
         if (this.channelData) {
             Object.keys(this.channelData).forEach(name => {
-                const input = document.getElementById(`halflife-${name}`);
+                const input = document.getElementById(`r-value-${name}`);
                 if (input) {
                     const value = parseFloat(input.value);
-                    if (value !== this.channelData[name].default_half_life) {
-                        customHalfLives[name] = value;
+                    if (Math.abs(value - this.channelData[name].default_r) > 0.001) {
+                        customRValues[name] = value;
                     }
                 }
             });
@@ -362,14 +378,14 @@ class MMMApp {
                 max_lag: 8,
                 iterations: 2000
             },
-            custom_half_lives: customHalfLives
+            custom_r_values: customRValues
         };
 
         try {
             document.getElementById('start-training').disabled = true;
             this.showSection('progress-section');
 
-            const response = await fetch(`${this.apiUrl}/model/train-with-custom-half-lives`, {
+            const response = await fetch(`${this.apiUrl}/model/train-with-custom-r-values`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'

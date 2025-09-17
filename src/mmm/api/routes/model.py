@@ -374,25 +374,25 @@ async def get_channel_classifications(upload_id: str) -> Dict[str, Any]:
                         'is_weekend', 'month', 'quarter', 'week_of_month', 'season'}
     channel_columns = [col for col in df.columns if col not in non_spend_columns]
 
-    # Classify channels and get default half-lives
+    # Classify channels and get default r values
     channel_info = {}
     for channel in channel_columns:
         channel_type = settings.classify_channel_type(channel)
 
-        # Default half-lives by channel type (in days)
-        default_half_lives = {
-            "search_brand": 0.3,      # Very short memory
-            "search_non_brand": 0.4,  # Short memory
-            "social": 1.0,            # Medium memory
-            "display": 1.5,           # Medium memory
-            "tv_video_youtube": 3.0,  # Long memory
-            "other": 1.0              # Default medium
+        # Default center r values by channel type (for display/customization)
+        default_r_values = {
+            "search_brand": 0.15,      # ~15% carries to next day
+            "search_non_brand": 0.2,   # ~20% carries to next day
+            "social": 0.3,             # ~30% carries to next day
+            "display": 0.35,           # ~35% carries to next day
+            "tv_video_youtube": 0.5,   # ~50% carries to next day
+            "other": 0.3               # ~30% carries to next day (default)
         }
 
         channel_info[channel] = {
             "type": channel_type,
-            "default_half_life": default_half_lives[channel_type],
-            "default_r_grid": settings.get_parameter_grid_config(channel, None)["r"]
+            "default_r": default_r_values[channel_type],
+            "r_grid": settings.get_parameter_grid_config(channel, None)["r"]
         }
 
     return {
@@ -402,23 +402,34 @@ async def get_channel_classifications(upload_id: str) -> Dict[str, Any]:
     }
 
 
-@router.post("/train-with-custom-half-lives")
-async def train_model_with_custom_half_lives(
+@router.post("/train-with-custom-r-values")
+async def train_model_with_custom_r_values(
     request: Dict[str, Any],
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db)
 ) -> Dict[str, Any]:
-    """Train model with custom half-lives for channels."""
+    """Train model with custom r values for channels."""
 
     upload_id = request.get("upload_id")
     config = request.get("config", {})
-    custom_half_lives = request.get("custom_half_lives", {})
+    custom_r_center = request.get("custom_r_values", {})
 
     if not upload_id:
         raise HTTPException(status_code=400, detail="upload_id is required")
 
     if upload_id not in upload_sessions:
         raise HTTPException(status_code=404, detail="Upload not found")
+
+    # Convert center r values to half-lives for the model
+    # r = 0.5^(1/half_life) => half_life = log(0.5) / log(r)
+    import math
+    custom_half_lives = {}
+    for channel, r_value in custom_r_center.items():
+        # Ensure r is in valid range
+        r_value = max(0.01, min(0.95, float(r_value)))
+        # Convert to half-life
+        half_life = math.log(0.5) / math.log(r_value) if r_value > 0 else 1.0
+        custom_half_lives[channel] = half_life
 
     # Store custom half-lives in config
     config["custom_half_lives"] = custom_half_lives
