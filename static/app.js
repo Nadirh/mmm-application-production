@@ -324,8 +324,15 @@ class MMMApp {
 
         progressFill.style.width = `${Math.min(progressPct, 100)}%`;
 
+        // Debug logging to see what we're receiving
+        if (progress.progress?.type) {
+            console.log('Progress type received:', progress.progress.type);
+            console.log('Full progress data:', progress.progress);
+        }
+
         // Handle CV structure display
         if (progress.progress?.type === 'cv_structure') {
+            console.log('Displaying CV structure!');
             this.displayCVStructure(progress.progress);
             return;
         }

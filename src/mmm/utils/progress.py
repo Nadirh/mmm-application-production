@@ -11,10 +11,11 @@ logger = structlog.get_logger()
 
 class TrainingProgressTracker:
     """Tracks training progress and broadcasts updates via WebSocket."""
-    
-    def __init__(self, run_id: str, websocket_manager=None):
+
+    def __init__(self, run_id: str, websocket_manager=None, training_runs_dict=None):
         self.run_id = run_id
         self.websocket_manager = websocket_manager
+        self.training_runs_dict = training_runs_dict
         self.start_time = datetime.now(UTC)
         self.current_fold = 0
         self.total_folds = 0
@@ -50,7 +51,8 @@ class TrainingProgressTracker:
 
         elif progress_type == "cv_structure":
             # Pass through CV structure info directly
-            return data
+            self.current_step = "Displaying CV structure"
+            # Don't return early - let it broadcast
 
         elif progress_type == "outer_fold_start":
             fold = data.get("fold", 0)
@@ -108,7 +110,12 @@ class TrainingProgressTracker:
         
         # Store progress data
         self.progress_data = progress_message
-        
+
+        # Update the global training_runs dict if available
+        if self.training_runs_dict is not None and self.run_id in self.training_runs_dict:
+            self.training_runs_dict[self.run_id]["progress"] = progress_message
+            self.training_runs_dict[self.run_id]["last_update"] = timestamp
+
         # Broadcast via WebSocket if manager available
         if self.websocket_manager:
             try:
@@ -167,9 +174,9 @@ class AsyncProgressCallback:
         await self.tracker.update_progress(progress_type, progress_data)
 
 
-def create_progress_tracker(run_id: str, websocket_manager=None) -> TrainingProgressTracker:
+def create_progress_tracker(run_id: str, websocket_manager=None, training_runs_dict=None) -> TrainingProgressTracker:
     """Factory function to create a progress tracker."""
-    return TrainingProgressTracker(run_id, websocket_manager)
+    return TrainingProgressTracker(run_id, websocket_manager, training_runs_dict)
 
 
 def create_progress_callback(tracker: TrainingProgressTracker) -> AsyncProgressCallback:

@@ -64,8 +64,8 @@ async def train_model_background(upload_id: str, run_id: str, config: Dict[str, 
             n_bootstrap=config.get("n_bootstrap", settings.model.n_bootstrap)
         )
         
-        # Create progress tracker with WebSocket support
-        progress_tracker = create_progress_tracker(run_id, connection_manager)
+        # Create progress tracker with WebSocket support and training_runs reference
+        progress_tracker = create_progress_tracker(run_id, connection_manager, training_runs)
         progress_callback = create_progress_callback(progress_tracker)
         
         # Update status in database and memory
