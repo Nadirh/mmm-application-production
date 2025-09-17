@@ -34,6 +34,7 @@ class ModelResults:
     cv_mape: float
     confidence_intervals: Dict[str, Tuple[float, float]]
     diagnostics: Dict[str, Any]
+    n_folds_averaged: int = 1  # Number of folds averaged for parameters
 
 
 @dataclass
@@ -88,8 +89,8 @@ class MMMModel:
             y, X_spend, X_time, spend_columns, channel_grids, progress_callback, cancellation_check
         )
         
-        # Select best parameters based on CV performance
-        best_params = self._select_best_parameters(cv_folds)
+        # Select best parameters based on CV performance (averages top folds)
+        best_params, n_folds_averaged = self._select_best_parameters(cv_folds)
         
         # Fit final model on full data
         final_params = self._fit_final_model(y, X_spend, X_time, spend_columns, best_params)
@@ -118,7 +119,8 @@ class MMMModel:
             mape=mape,
             cv_mape=cv_mape,
             confidence_intervals=confidence_intervals,
-            diagnostics=diagnostics
+            diagnostics=diagnostics,
+            n_folds_averaged=n_folds_averaged
         )
         
         self.is_fitted = True
@@ -352,7 +354,7 @@ class MMMModel:
         
         return baseline + channel_contributions
     
-    def _select_best_parameters(self, cv_folds: List[CrossValidationFold]) -> ModelParameters:
+    def _select_best_parameters(self, cv_folds: List[CrossValidationFold]) -> Tuple[ModelParameters, int]:
         """Selects best parameters by averaging top-performing folds."""
 
         if not cv_folds:
@@ -411,7 +413,7 @@ class MMMModel:
 
         logger.info(f"Averaged parameters created from {n_folds_to_average} best folds")
 
-        return averaged_params
+        return averaged_params, n_folds_to_average
     
     def _fit_final_model(self,
                         y: np.ndarray,

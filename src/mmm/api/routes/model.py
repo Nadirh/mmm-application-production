@@ -161,7 +161,8 @@ async def train_model_background(upload_id: str, run_id: str, config: Dict[str, 
                     "performance": {
                         "cv_mape": results.cv_mape,
                         "r_squared": results.r_squared,
-                        "mape": results.mape
+                        "mape": results.mape,
+                        "n_folds_averaged": results.n_folds_averaged  # Add fold averaging info
                     },
                     "diagnostics": results.diagnostics,
                     "confidence_intervals": results.confidence_intervals
@@ -426,7 +427,8 @@ async def get_model_results(run_id: str) -> Dict[str, Any]:
         "model_performance": {
             "cv_mape": results.cv_mape,
             "r_squared": results.r_squared,
-            "mape": results.mape
+            "mape": results.mape,
+            "n_folds_averaged": results.n_folds_averaged
         },
         "parameters": {
             "alpha_baseline": results.parameters.alpha_baseline,

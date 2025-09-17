@@ -18,30 +18,8 @@ class MMMApp {
     }
 
     addVisibleDebugIndicator() {
-        // Add a bright red banner at the top of the page to show JS is working
-        const banner = document.createElement('div');
-        banner.style.cssText = `
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            background: red;
-            color: white;
-            padding: 10px;
-            text-align: center;
-            font-weight: bold;
-            z-index: 9999;
-            font-size: 16px;
-        `;
-        banner.textContent = '🚀 JS v1.9.61 LOADED - CLEANED MARGINAL ROI & FIXED BUDGET';
-        document.body.appendChild(banner);
-
-        // Remove after 5 seconds
-        setTimeout(() => {
-            if (banner.parentNode) {
-                banner.parentNode.removeChild(banner);
-            }
-        }, 5000);
+        // Banner removed - JS loads silently now
+        console.log('MMM Application JavaScript loaded successfully');
     }
 
     configureChartDefaults() {
@@ -432,6 +410,17 @@ class MMMApp {
             <div class="metric-card">
                 <div class="metric-value">${(performance.mape || performance.final_mape)?.toFixed(3) || 'N/A'}</div>
                 <div class="metric-label">Final MAPE</div>
+            </div>
+            <div class="metric-card" style="background: #e3f2fd; border: 2px solid #1976d2;">
+                <div class="metric-value" style="color: #1976d2; font-size: 1.8rem;">
+                    ${performance.n_folds_averaged || 'N/A'}
+                </div>
+                <div class="metric-label" style="color: #1976d2; font-weight: bold;">
+                    Folds Averaged<br>
+                    <span style="font-size: 0.85rem; font-weight: normal;">
+                        (Top ${performance.n_folds_averaged || 'N/A'} best-performing folds)
+                    </span>
+                </div>
             </div>
         `;
         
