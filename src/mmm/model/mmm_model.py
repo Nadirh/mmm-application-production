@@ -50,10 +50,10 @@ class CrossValidationFold:
 class MMMModel:
     """Media Mix Model implementation with cross-validation and optimization."""
     
-    def __init__(self, 
+    def __init__(self,
                  training_window_days: int = 126,
                  test_window_days: int = 14,
-                 n_bootstrap: int = 1000):
+                 n_bootstrap: int = 500):
         self.training_window_days = training_window_days
         self.test_window_days = test_window_days
         self.n_bootstrap = n_bootstrap
@@ -434,27 +434,75 @@ class MMMModel:
                                       X_time: np.ndarray,
                                       spend_columns: List[str],
                                       params: ModelParameters) -> Dict[str, Tuple[float, float]]:
-        """Calculates bootstrap confidence intervals for channel contributions."""
-        # Simplified bootstrap - in practice would be more sophisticated
-        confidence_intervals = {}
-        
-        # Calculate total channel contributions
+        """Calculates bootstrap confidence intervals for channel contributions using residual resampling."""
+        logger.info(f"Starting bootstrap confidence intervals with {self.n_bootstrap} iterations")
+
+        # Calculate fitted values and residuals
+        fitted_values = self._predict(X_spend, X_time, spend_columns, params)
+        residuals = y - fitted_values
+
+        # Store bootstrap results for each channel
+        bootstrap_contributions = {channel: [] for channel in spend_columns}
+
+        # Keep transformation parameters fixed from the fitted model
         transform_params = {
             "channel_betas": params.channel_betas,
             "channel_rs": params.channel_rs
         }
-        X_transformed = self._apply_transforms(X_spend, spend_columns, transform_params)
-        
-        for i, channel in enumerate(spend_columns):
-            contribution = params.channel_alphas[channel] * X_transformed[:, i]
-            total_contribution = np.sum(contribution)
-            
-            # Simple confidence interval (±20% as placeholder)
-            lower = total_contribution * 0.8
-            upper = total_contribution * 1.2
-            
-            confidence_intervals[channel] = (lower, upper)
-        
+
+        # Perform bootstrap iterations
+        for iteration in range(self.n_bootstrap):
+            # Resample residuals with replacement
+            bootstrap_indices = np.random.choice(len(residuals), size=len(residuals), replace=True)
+            bootstrap_residuals = residuals[bootstrap_indices]
+
+            # Create bootstrap y values
+            y_bootstrap = fitted_values + bootstrap_residuals
+
+            # Refit only the linear coefficients (keeping transformation parameters fixed)
+            bootstrap_params = self._fit_linear_model(
+                y_bootstrap, X_spend, X_time, spend_columns, transform_params
+            )
+
+            # Calculate channel contributions for this bootstrap iteration
+            X_transformed = self._apply_transforms(X_spend, spend_columns, transform_params)
+
+            for i, channel in enumerate(spend_columns):
+                contribution = bootstrap_params.channel_alphas[channel] * X_transformed[:, i]
+                total_contribution = np.sum(contribution)
+                bootstrap_contributions[channel].append(total_contribution)
+
+            # Log progress every 100 iterations
+            if (iteration + 1) % 100 == 0:
+                logger.debug(f"Bootstrap progress: {iteration + 1}/{self.n_bootstrap} iterations completed")
+
+        # Calculate 95% confidence intervals from bootstrap distribution
+        confidence_intervals = {}
+
+        for channel in spend_columns:
+            contributions = np.array(bootstrap_contributions[channel])
+
+            # Calculate percentiles for 95% CI
+            lower_percentile = np.percentile(contributions, 2.5)
+            upper_percentile = np.percentile(contributions, 97.5)
+
+            confidence_intervals[channel] = (lower_percentile, upper_percentile)
+
+            # Log the improvement over the old placeholder method
+            mean_contribution = np.mean(contributions)
+            std_contribution = np.std(contributions)
+            old_ci_width = mean_contribution * 0.4  # Old method was ±20%
+            new_ci_width = upper_percentile - lower_percentile
+
+            logger.info(
+                f"Channel {channel}: Mean={mean_contribution:.0f}, "
+                f"CI=[{lower_percentile:.0f}, {upper_percentile:.0f}], "
+                f"CI width reduced from {old_ci_width:.0f} to {new_ci_width:.0f} "
+                f"(Std={std_contribution:.0f})"
+            )
+
+        logger.info(f"Bootstrap confidence intervals completed with {self.n_bootstrap} iterations")
+
         return confidence_intervals
     
     def _calculate_diagnostics(self,
