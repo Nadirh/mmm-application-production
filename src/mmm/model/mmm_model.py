@@ -430,8 +430,15 @@ class MMMModel:
         param_combinations = self._generate_parameter_combinations(channel_grids, spend_columns)
         total_combinations = len(param_combinations)
 
-        # Report that parameter optimization is starting
-        logger.info(f"Starting parameter optimization for fold {fold_idx + 1}: {total_combinations} combinations to test")
+        # Check if sampling was used
+        total_possible = 1
+        for channel in spend_columns:
+            total_possible *= len(channel_grids[channel]["beta"]) * len(channel_grids[channel]["r"])
+
+        if total_possible > total_combinations:
+            logger.info(f"Starting parameter optimization for fold {fold_idx + 1}: Testing {total_combinations} sampled combinations (out of {total_possible} possible)")
+        else:
+            logger.info(f"Starting parameter optimization for fold {fold_idx + 1}: {total_combinations} combinations to test")
         if progress_callback:
             progress_callback({
                 "type": "parameter_optimization",
@@ -467,32 +474,66 @@ class MMMModel:
                                        channel_grids: Dict[str, Dict[str, List[float]]],
                                        spend_columns: List[str]) -> List[Dict[str, Dict[str, float]]]:
         """Generates all parameter combinations for grid search."""
+        # Calculate total combinations first
+        total_combos = 1
+        for channel in spend_columns:
+            betas = channel_grids[channel]["beta"]
+            rs = channel_grids[channel]["r"]
+            total_combos *= len(betas) * len(rs)
+
+        # If too many combinations, sample randomly
+        MAX_COMBINATIONS = 10000
+        if total_combos > MAX_COMBINATIONS:
+            logger.warning(f"Total combinations ({total_combos}) exceeds maximum ({MAX_COMBINATIONS}). Random sampling will be used.")
+            return self._generate_sampled_combinations(channel_grids, spend_columns, MAX_COMBINATIONS)
+
         combinations = []
-        
+
         # Get parameter lists for each channel
         channel_param_lists = {}
         for channel in spend_columns:
             betas = channel_grids[channel]["beta"]
             rs = channel_grids[channel]["r"]
             channel_param_lists[channel] = [(b, r) for b in betas for r in rs]
-        
+
         # Generate all combinations
         channel_names = list(channel_param_lists.keys())
         param_products = itertools.product(*[channel_param_lists[ch] for ch in channel_names])
-        
+
         for param_combo in param_products:
             params = {
                 "channel_betas": {},
                 "channel_rs": {}
             }
-            
+
             for i, channel in enumerate(channel_names):
                 beta, r = param_combo[i]
                 params["channel_betas"][channel] = beta
                 params["channel_rs"][channel] = r
-            
+
             combinations.append(params)
-        
+
+        return combinations
+
+    def _generate_sampled_combinations(self,
+                                       channel_grids: Dict[str, Dict[str, List[float]]],
+                                       spend_columns: List[str],
+                                       n_samples: int) -> List[Dict[str, Dict[str, float]]]:
+        """Generates a random sample of parameter combinations for very large grids."""
+        import random
+        random.seed(42)  # For reproducibility
+
+        combinations = []
+        for _ in range(n_samples):
+            params = {
+                "channel_betas": {},
+                "channel_rs": {}
+            }
+            for channel in spend_columns:
+                params["channel_betas"][channel] = random.choice(channel_grids[channel]["beta"])
+                params["channel_rs"][channel] = random.choice(channel_grids[channel]["r"])
+            combinations.append(params)
+
         return combinations
     
     def _fit_linear_model(self,
