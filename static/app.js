@@ -434,6 +434,7 @@ class MMMApp {
             if (response.ok) {
                 this.runId = result.run_id;
                 this.showTrainingStatus(`🚀 Training started! Run ID: ${this.runId}`, 'success');
+                document.getElementById('training-loading').classList.remove('hidden'); // Show loading message
                 document.getElementById('cancel-training').style.display = 'block'; // Show cancel button
                 this.startProgressMonitoring();
             } else {
