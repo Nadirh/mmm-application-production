@@ -489,10 +489,10 @@ class MMMModel:
             total_combos *= len(betas) * len(rs)
 
         # If too many combinations, sample randomly
-        MAX_COMBINATIONS = 1000  # Reduced from 10000 for faster testing
+        MAX_COMBINATIONS = 500000  # Allow up to 500k combinations for 4 channels (390,625)
         if total_combos > MAX_COMBINATIONS:
             logger.warning(f"Total combinations ({total_combos}) exceeds maximum ({MAX_COMBINATIONS}). Random sampling will be used.")
-            return self._generate_sampled_combinations(channel_grids, spend_columns, MAX_COMBINATIONS)
+            return self._generate_sampled_combinations(channel_grids, spend_columns, 10000)  # Sample 10k if over limit
 
         combinations = []
 
