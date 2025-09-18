@@ -440,10 +440,8 @@ class MMMModel:
             })
 
         for combo_idx, params in enumerate(param_combinations):
-            # Report parameter optimization progress more frequently for large grids
-            # For small grids (<100), report every 10. For large grids, report more often.
-            report_frequency = 10 if total_combinations < 100 else max(1, min(100, total_combinations // 100))
-            if progress_callback and combo_idx > 0 and combo_idx % report_frequency == 0:
+            # Report parameter optimization progress every 10 combinations
+            if progress_callback and combo_idx > 0 and combo_idx % 10 == 0:
                 progress_callback({
                     "type": "parameter_optimization",
                     "fold": fold_idx + 1,
