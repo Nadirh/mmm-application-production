@@ -456,6 +456,9 @@ class MMMApp {
         this.stopProgressMonitoring();
         this.isCancelling = true;
 
+        // Immediately hide the "Training your Media Mix Model..." message
+        document.getElementById('training-loading').classList.add('hidden');
+
         let runIdToCancel = this.runId;
 
         // If we don't have a runId in memory, try to find an active training job
@@ -476,16 +479,19 @@ class MMMApp {
                     } else {
                         this.showTrainingStatus('❌ No active training to cancel', 'error');
                         this.isCancelling = false;
+                        // No training to cancel, so no need to show loading again
                         return;
                     }
                 } else {
                     this.showTrainingStatus('❌ No active training to cancel', 'error');
                     this.isCancelling = false;
+                    // No training to cancel, so no need to show loading again
                     return;
                 }
             } catch (error) {
                 this.showTrainingStatus(`❌ Error checking for active training: ${error.message}`, 'error');
                 this.isCancelling = false;
+                // No training to cancel, so no need to show loading again
                 return;
             }
         }
@@ -510,10 +516,18 @@ class MMMApp {
             } else {
                 this.showTrainingStatus(`❌ Failed to cancel training: ${result.detail}`, 'error');
                 this.isCancelling = false;
+                // Cancellation failed, show loading again as training continues
+                document.getElementById('training-loading').classList.remove('hidden');
+                // Resume monitoring
+                this.startProgressMonitoring();
             }
         } catch (error) {
             this.showTrainingStatus(`❌ Cancel error: ${error.message}`, 'error');
             this.isCancelling = false;
+            // Cancellation failed, show loading again as training continues
+            document.getElementById('training-loading').classList.remove('hidden');
+            // Resume monitoring
+            this.startProgressMonitoring();
         }
     }
 
