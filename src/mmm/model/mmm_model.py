@@ -304,7 +304,8 @@ class MMMModel:
                 y_inner_train, X_spend_inner_train, X_time_inner_train,
                 spend_columns, channel_grids,
                 lambda info: progress_callback({**info, "outer_fold": fold_num}) if progress_callback else None,
-                fold_num - 1
+                fold_num - 1,
+                cancellation_check
             )
 
             # Evaluate on outer test set with best params
@@ -385,7 +386,7 @@ class MMMModel:
             # Find best parameters for this fold
             best_params = self._optimize_fold_parameters(
                 y_train, X_spend_train, X_time_train, spend_columns, channel_grids,
-                progress_callback, fold_idx
+                progress_callback, fold_idx, cancellation_check
             )
             
             # Predict on test set
@@ -421,7 +422,8 @@ class MMMModel:
                                  spend_columns: List[str],
                                  channel_grids: Dict[str, Dict[str, List[float]]],
                                  progress_callback: Optional[callable] = None,
-                                 fold_idx: int = 0) -> ModelParameters:
+                                 fold_idx: int = 0,
+                                 cancellation_check: Optional[callable] = None) -> ModelParameters:
         """Optimizes parameters for a single fold using grid search."""
         best_mape = float('inf')
         best_params = None
@@ -448,6 +450,11 @@ class MMMModel:
             })
 
         for combo_idx, params in enumerate(param_combinations):
+            # Check for cancellation
+            if cancellation_check and cancellation_check():
+                logger.info(f"Training cancelled during parameter optimization at combination {combo_idx}/{total_combinations}")
+                raise Exception("Training cancelled by user")
+
             # Report parameter optimization progress every combination for first 100, then every 10
             should_report = combo_idx < 100 or (combo_idx % 10 == 0)
             if progress_callback and combo_idx > 0 and should_report:
@@ -482,7 +489,7 @@ class MMMModel:
             total_combos *= len(betas) * len(rs)
 
         # If too many combinations, sample randomly
-        MAX_COMBINATIONS = 10000
+        MAX_COMBINATIONS = 1000  # Reduced from 10000 for faster testing
         if total_combos > MAX_COMBINATIONS:
             logger.warning(f"Total combinations ({total_combos}) exceeds maximum ({MAX_COMBINATIONS}). Random sampling will be used.")
             return self._generate_sampled_combinations(channel_grids, spend_columns, MAX_COMBINATIONS)

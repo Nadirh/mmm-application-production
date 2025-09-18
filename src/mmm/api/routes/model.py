@@ -903,7 +903,7 @@ async def cancel_training(run_id: str, db: AsyncSession = Depends(get_db)) -> Di
         logger.info("Training run cancelled", run_id=run_id)
         
         # Notify via WebSocket if connected
-        await connection_manager.send_progress_update(run_id, {
+        await connection_manager.broadcast_training_progress(run_id, {
             "type": "cancelled",
             "message": "Training cancelled by user",
             "status": "cancelled"
