@@ -18,6 +18,7 @@ from contextlib import asynccontextmanager
 
 from mmm.config.settings import settings
 from mmm.api.routes import data, model, optimization, health, websocket, admin
+from mmm.api.auth import auth_middleware
 
 
 # Configure structured logging
@@ -108,6 +109,12 @@ app.add_middleware(
 )
 
 app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+# Add authentication middleware for production
+if not settings.is_development():
+    @app.middleware("http")
+    async def apply_auth_middleware(request: Request, call_next):
+        return await auth_middleware(request, call_next)
 
 
 @app.middleware("http")

@@ -581,6 +581,20 @@ class MMMApp {
             return;
         }
 
+        // Handle inner fold info
+        if (progress.progress?.type === 'inner_fold_info') {
+            const msg = `📊 Setting up inner fold for Outer Fold ${progress.progress.outer_fold} (${progress.progress.inner_train_days} train / ${progress.progress.inner_test_days} test days)`;
+            this.showTrainingStatus(msg, 'info');
+            return;
+        }
+
+        // Handle parameter optimization progress
+        if (progress.progress?.type === 'parameter_optimization') {
+            const msg = `⚙️ Optimizing parameters - Fold ${progress.progress.fold}: Testing combination ${progress.progress.combination}/${progress.progress.total_combinations}`;
+            this.showTrainingStatus(msg, 'info');
+            return;
+        }
+
         let statusMessage = `Status: ${progress.status}`;
         if (progress.progress?.current_step) {
             statusMessage += ` - ${progress.progress.current_step}`;
