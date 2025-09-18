@@ -590,8 +590,14 @@ class MMMApp {
 
         // Handle parameter optimization progress
         if (progress.progress?.type === 'parameter_optimization') {
-            const msg = `⚙️ Optimizing parameters - Fold ${progress.progress.fold}: Testing combination ${progress.progress.combination}/${progress.progress.total_combinations}`;
+            const pct = ((progress.progress.combination / progress.progress.total_combinations) * 100).toFixed(2);
+            const msg = `⚙️ Optimizing parameters - Fold ${progress.progress.fold}: Testing combination ${progress.progress.combination}/${progress.progress.total_combinations} (${pct}%)`;
             this.showTrainingStatus(msg, 'info');
+            // Also update progress bar
+            const progressFill = document.getElementById('progress-fill');
+            if (progressFill && progress.progress.combination > 0) {
+                progressFill.style.width = `${Math.min(pct, 100)}%`;
+            }
             return;
         }
 

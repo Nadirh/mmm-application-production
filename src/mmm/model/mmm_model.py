@@ -431,6 +431,7 @@ class MMMModel:
         total_combinations = len(param_combinations)
 
         # Report that parameter optimization is starting
+        logger.info(f"Starting parameter optimization for fold {fold_idx + 1}: {total_combinations} combinations to test")
         if progress_callback:
             progress_callback({
                 "type": "parameter_optimization",
@@ -440,8 +441,9 @@ class MMMModel:
             })
 
         for combo_idx, params in enumerate(param_combinations):
-            # Report parameter optimization progress every 10 combinations
-            if progress_callback and combo_idx > 0 and combo_idx % 10 == 0:
+            # Report parameter optimization progress every combination for first 100, then every 10
+            should_report = combo_idx < 100 or (combo_idx % 10 == 0)
+            if progress_callback and combo_idx > 0 and should_report:
                 progress_callback({
                     "type": "parameter_optimization",
                     "fold": fold_idx + 1,

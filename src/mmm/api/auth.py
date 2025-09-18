@@ -57,8 +57,12 @@ async def auth_middleware(request: Request, call_next):
     """
     path = request.url.path
 
-    # Skip authentication for health check, training progress, and cancel endpoints
-    if path.startswith("/api/health") or "/training/progress/" in path or "/training/cancel/" in path:
+    # Skip authentication for health check, training progress, cancel, and admin list endpoints
+    if (path.startswith("/api/health") or
+        "/training/progress/" in path or
+        "/training/cancel/" in path or
+        "/training/force-cancel/" in path or
+        path == "/api/admin/training/list"):
         return await call_next(request)
 
     # Skip authentication for static files (CSS, JS, etc.)
