@@ -452,6 +452,10 @@ class MMMApp {
             return;
         }
 
+        // Immediately stop monitoring to prevent conflicting messages
+        this.stopProgressMonitoring();
+        this.isCancelling = true;
+
         let runIdToCancel = this.runId;
 
         // If we don't have a runId in memory, try to find an active training job
@@ -471,14 +475,17 @@ class MMMApp {
                         this.showTrainingStatus(`🔍 Found stuck training job: ${runIdToCancel.substring(0, 8)}...`, 'info');
                     } else {
                         this.showTrainingStatus('❌ No active training to cancel', 'error');
+                        this.isCancelling = false;
                         return;
                     }
                 } else {
                     this.showTrainingStatus('❌ No active training to cancel', 'error');
+                    this.isCancelling = false;
                     return;
                 }
             } catch (error) {
                 this.showTrainingStatus(`❌ Error checking for active training: ${error.message}`, 'error');
+                this.isCancelling = false;
                 return;
             }
         }
@@ -495,15 +502,18 @@ class MMMApp {
 
             if (response.ok) {
                 this.showTrainingStatus('⏹️ Training cancelled successfully', 'success');
-                this.stopProgressMonitoring();
                 document.getElementById('cancel-training').style.display = 'none';
                 document.getElementById('start-training').disabled = false;
                 this.runId = null; // Clear the runId
+                // Keep isCancelling true for a bit to prevent stale progress updates
+                setTimeout(() => { this.isCancelling = false; }, 3000);
             } else {
                 this.showTrainingStatus(`❌ Failed to cancel training: ${result.detail}`, 'error');
+                this.isCancelling = false;
             }
         } catch (error) {
             this.showTrainingStatus(`❌ Cancel error: ${error.message}`, 'error');
+            this.isCancelling = false;
         }
     }
 
@@ -523,6 +533,9 @@ class MMMApp {
 
     async checkTrainingProgress() {
         if (!this.runId) return;
+
+        // Don't update progress if we're in the middle of cancelling
+        if (this.isCancelling) return;
 
         try {
             const response = await fetch(`${this.apiUrl}/model/training/progress/${this.runId}`);
@@ -550,6 +563,9 @@ class MMMApp {
     }
 
     updateProgressDisplay(progress) {
+        // Don't update display if we're cancelling
+        if (this.isCancelling) return;
+
         const progressFill = document.getElementById('progress-fill');
         const progressPct = progress.progress?.progress_pct || 0;
 
