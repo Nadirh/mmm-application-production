@@ -192,105 +192,26 @@ class MMMApp {
     }
 
     displayChannelClassifications(channels) {
-        const classificationsHtml = `
-            <div style="margin-top: 30px; padding: 25px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; box-shadow: 0 10px 40px rgba(0,0,0,0.15);">
-                <h3 style="color: white; margin-bottom: 20px; font-size: 1.4rem;">🌟 Channel Memory (Adstock) Customization</h3>
-                <p style="color: #f0f0f0; margin-bottom: 20px;">The r value represents how much of today's advertising effect carries over to tomorrow (e.g., r=0.3 means 30% of impact persists to the next day).</p>
-                <div style="background: white; border-radius: 8px; overflow: hidden;">
-                    <table style="width: 100%; border-collapse: collapse;">
-                        <thead>
-                            <tr style="background: linear-gradient(90deg, #4a5568 0%, #2d3748 100%); color: white;">
-                                <th style="padding: 15px; text-align: left; font-weight: 600;">Channel</th>
-                                <th style="padding: 15px; text-align: center; font-weight: 600;">Type</th>
-                                <th style="padding: 15px; text-align: center; font-weight: 600;">Default r</th>
-                                <th style="padding: 15px; text-align: center; font-weight: 600;">Custom r<br><span style="font-size: 0.8em; font-weight: normal;">(0.01 to 0.95)</span></th>
-                                <th style="padding: 15px; text-align: center; font-weight: 600;">Impact %</th>
-                                <th style="padding: 15px; text-align: left; font-weight: 600;">Grid Values<br><span style="font-size: 0.8em; font-weight: normal;">5 values for optimization</span></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${Object.entries(channels).map(([name, info], index) => `
-                                <tr style="background: ${index % 2 === 0 ? '#f8f9fa' : 'white'}; transition: background 0.2s;"
-                                    onmouseover="this.style.background='#e8f4ff'"
-                                    onmouseout="this.style.background='${index % 2 === 0 ? '#f8f9fa' : 'white'}'">
-                                    <td style="padding: 15px; font-weight: 600; color: #2d3748;">
-                                        ${this.formatChannelName(name)}
-                                    </td>
-                                    <td style="padding: 15px; text-align: center;">
-                                        <span style="background: ${this.getTypeColor(info.type)}; color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.85em; font-weight: 500;">
-                                            ${info.type.replace(/_/g, ' ').toUpperCase()}
-                                        </span>
-                                    </td>
-                                    <td style="padding: 15px; text-align: center; font-weight: 500; color: #4a5568;">
-                                        ${info.default_r.toFixed(2)}
-                                    </td>
-                                    <td style="padding: 15px; text-align: center;">
-                                        <input type="number"
-                                               id="r-value-${name}"
-                                               class="r-input"
-                                               min="0.01"
-                                               max="0.95"
-                                               step="0.05"
-                                               value="${info.default_r}"
-                                               style="width: 80px; padding: 8px; border: 2px solid #cbd5e0; border-radius: 6px; text-align: center; font-weight: 500;
-                                                      focus:border-color: #667eea; focus:outline: none; transition: border-color 0.2s;"
-                                               onfocus="this.style.borderColor='#667eea'"
-                                               onblur="this.style.borderColor='#cbd5e0'"
-                                               onchange="window.mmm.updateRGrid('${name}', this.value)">
-                                    </td>
-                                    <td style="padding: 15px; text-align: center;" id="impact-pct-${name}">
-                                        <span style="background: #e6fffa; color: #047481; padding: 6px 12px; border-radius: 20px; font-weight: 600;">
-                                            ${(info.default_r * 100).toFixed(0)}% next day
-                                        </span>
-                                    </td>
-                                    <td style="padding: 15px;" id="r-grid-${name}">
-                                        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                                            ${info.r_grid.map(r => `
-                                                <span style="background: #edf2f7; color: #2d3748; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 0.9em;">
-                                                    ${r.toFixed(3)}
-                                                </span>
-                                            `).join('')}
-                                        </div>
-                                    </td>
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
-                </div>
-                <div style="text-align: center; margin-top: 20px;">
-                    <button id="reset-r-values"
-                            style="background: white; color: #667eea; padding: 12px 30px; border: 2px solid #667eea;
-                                   border-radius: 6px; font-weight: 600; cursor: pointer; transition: all 0.3s;"
-                            onmouseover="this.style.background='#667eea'; this.style.color='white';"
-                            onmouseout="this.style.background='white'; this.style.color='#667eea';"
-                            onclick="app.resetRValues()">
-                        ↺ Reset to Defaults
-                    </button>
-                </div>
-            </div>
-        `;
-
-        // Insert after channel info section
-        const channelInfoDiv = document.getElementById('channel-info');
-        const classificationsDiv = document.createElement('div');
-        classificationsDiv.id = 'channel-classifications';
-        classificationsDiv.innerHTML = classificationsHtml;
-        channelInfoDiv.parentNode.insertBefore(classificationsDiv, channelInfoDiv.nextSibling);
-
-        // Store channel data for later use
+        // Channel Memory customization removed - Bayesian optimization now automatically explores full parameter space
+        // No manual r-value adjustment needed with Optuna optimization
+        // Store channel data for later use if needed
         this.channelData = channels;
-
-        // Add event listeners for r value inputs
-        Object.keys(channels).forEach(name => {
-            const input = document.getElementById(`r-value-${name}`);
-            if (input) {
-                input.addEventListener('input', (e) => {
-                    const rValue = parseFloat(e.target.value);
-                    this.updateRDisplay(name, rValue);
-                });
-            }
-        });
+        return;
     }
+
+    // Stub function to maintain compatibility
+    updateRGrid(channelName, customR) {
+        // No longer needed with Bayesian optimization
+        return;
+    }
+
+    // Stub function to maintain compatibility
+    resetRValues() {
+        // No longer needed with Bayesian optimization
+        return;
+    }
+
+    // Removed old HTML template code and event listeners for channel memory customization
 
     getTypeColor(type) {
         const colors = {
@@ -304,107 +225,13 @@ class MMMApp {
         return colors[type] || colors['other'];
     }
 
-    updateRGrid(channelName, centerRValue) {
-        const centerR = parseFloat(centerRValue);
-
-        // Update impact percentage display
-        const impactElement = document.getElementById(`impact-pct-${channelName}`);
-        if (impactElement) {
-            const pct = (centerR * 100).toFixed(0);
-            impactElement.innerHTML = `
-                <span style="background: #e6fffa; color: #047481; padding: 6px 12px; border-radius: 20px; font-weight: 600;">
-                    ${pct}% next day
-                </span>
-            `;
-        }
-
-        // Generate r values from 50% to 150% of center
-        // This matches the generate_r_grid_from_center method in settings.py
-        const rValues = [];
-
-        // Special case: if center is 0, return only 0
-        if (centerR === 0) {
-            rValues.push(0);
-        } else {
-            // Generate values from 50% to 150%
-            const percentages = [0.5, 0.75, 1.0, 1.25, 1.5];
-            for (const pct of percentages) {
-                const rVal = centerR * pct;
-                // Cap at 0.99 and stop adding if we've reached the cap
-                if (rVal >= 0.99) {
-                    if (!rValues.includes(0.99)) {
-                        rValues.push(0.99);
-                    }
-                    break;
-                } else {
-                    rValues.push(Math.round(rVal * 1000) / 1000); // Round to 3 decimals
-                }
-            }
-
-            // If only one value and it's less than 0.99, add a slight variation
-            if (rValues.length === 1 && rValues[0] < 0.99) {
-                rValues.push(Math.min(0.99, Math.round(rValues[0] * 1.1 * 1000) / 1000));
-            }
-        }
-
-        // Update grid display with different styling for custom values
-        const rGridElement = document.getElementById(`r-grid-${channelName}`);
-        if (rGridElement) {
-            const isCustom = this.channelData && centerR !== parseFloat(this.channelData[channelName].default_r);
-            const bgColor = isCustom ? '#fff3cd' : '#edf2f7';
-            const textColor = isCustom ? '#856404' : '#2d3748';
-            const border = isCustom ? 'border: 1px solid #ffc107;' : '';
-
-            rGridElement.innerHTML = `
-                <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
-                    ${rValues.map(r => `
-                        <span style="background: ${bgColor}; color: ${textColor}; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 0.9em; ${border}">
-                            ${r.toFixed(3)}
-                        </span>
-                    `).join('')}
-                    ${rValues.length < 5 ? `<span style="color: #666; font-size: 0.85em; font-style: italic; padding: 4px;">(${rValues.length} value${rValues.length > 1 ? 's' : ''})</span>` : ''}
-                </div>
-            `;
-        }
-    }
-
-    updateRDisplay(channelName, centerR) {
-        // Legacy function - redirect to new updateRGrid
-        this.updateRGrid(channelName, centerR);
-    }
-
-    resetRValues() {
-        if (this.channelData) {
-            Object.entries(this.channelData).forEach(([name, info]) => {
-                const input = document.getElementById(`r-value-${name}`);
-                if (input) {
-                    input.value = info.default_r;
-                    this.updateRDisplay(name, info.default_r);
-                }
-            });
-        }
-    }
-
     async startTraining() {
         if (!this.uploadId) {
             this.showStatus('❌ No data uploaded', 'error');
             return;
         }
 
-        // Collect custom r values
-        const customRValues = {};
-        if (this.channelData) {
-            Object.keys(this.channelData).forEach(name => {
-                const input = document.getElementById(`r-value-${name}`);
-                if (input) {
-                    const value = parseFloat(input.value);
-                    if (Math.abs(value - this.channelData[name].default_r) > 0.001) {
-                        customRValues[name] = value;
-                    }
-                }
-            });
-        }
-
+        // No custom r values needed - Bayesian optimization explores full parameter space automatically
         const requestData = {
             upload_id: this.uploadId,
             config: {
@@ -413,15 +240,14 @@ class MMMApp {
                 media_transform: "adstock",
                 max_lag: 8,
                 iterations: 2000
-            },
-            custom_r_values: customRValues
+            }
         };
 
         try {
             document.getElementById('start-training').disabled = true;
             this.showSection('progress-section');
 
-            const response = await fetch(`${this.apiUrl}/model/train-with-custom-r-values`, {
+            const response = await fetch(`${this.apiUrl}/model/train`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
