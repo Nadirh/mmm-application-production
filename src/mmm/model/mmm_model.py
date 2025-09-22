@@ -10,6 +10,8 @@ from sklearn.metrics import mean_absolute_percentage_error
 from scipy.optimize import minimize
 import itertools
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import time
+import asyncio
 import structlog
 
 logger = structlog.get_logger()
@@ -424,58 +426,12 @@ class MMMModel:
                                  progress_callback: Optional[callable] = None,
                                  fold_idx: int = 0,
                                  cancellation_check: Optional[callable] = None) -> ModelParameters:
-        """Optimizes parameters for a single fold using grid search."""
-        best_mape = float('inf')
-        best_params = None
-        
-        # Generate all parameter combinations
-        param_combinations = self._generate_parameter_combinations(channel_grids, spend_columns)
-        total_combinations = len(param_combinations)
-
-        # Check if sampling was used
-        total_possible = 1
-        for channel in spend_columns:
-            total_possible *= len(channel_grids[channel]["beta"]) * len(channel_grids[channel]["r"])
-
-        if total_possible > total_combinations:
-            logger.info(f"Starting parameter optimization for fold {fold_idx + 1}: Testing {total_combinations} sampled combinations (out of {total_possible} possible)")
-        else:
-            logger.info(f"Starting parameter optimization for fold {fold_idx + 1}: {total_combinations} combinations to test")
-        if progress_callback:
-            progress_callback({
-                "type": "parameter_optimization",
-                "fold": fold_idx + 1,
-                "combination": 0,
-                "total_combinations": total_combinations
-            })
-
-        for combo_idx, params in enumerate(param_combinations):
-            # Check for cancellation
-            if cancellation_check and cancellation_check():
-                logger.info(f"Training cancelled during parameter optimization at combination {combo_idx}/{total_combinations}")
-                raise Exception("Training cancelled by user")
-
-            # Report parameter optimization progress every combination for first 100, then every 10
-            should_report = combo_idx < 100 or (combo_idx % 10 == 0)
-            if progress_callback and combo_idx > 0 and should_report:
-                progress_callback({
-                    "type": "parameter_optimization",
-                    "fold": fold_idx + 1,
-                    "combination": combo_idx + 1,
-                    "total_combinations": total_combinations
-                })
-            # Fit linear model with these transform parameters
-            fitted_params = self._fit_linear_model(y, X_spend, X_time, spend_columns, params)
-            
-            # Calculate predictions and MAPE
-            y_pred = self._predict(X_spend, X_time, spend_columns, fitted_params)
-            mape = mean_absolute_percentage_error(y, y_pred) * 100
-            
-            if mape < best_mape:
-                best_mape = mape
-                best_params = fitted_params
-        
-        return best_params
+        """Optimizes parameters for a single fold using Bayesian optimization for all channel counts."""
+        # Always use Bayesian optimization
+        return self._optimize_fold_parameters_bayesian(
+            y, X_spend, X_time, spend_columns, channel_grids,
+            progress_callback, fold_idx, cancellation_check
+        )
     
     def _generate_parameter_combinations(self,
                                        channel_grids: Dict[str, Dict[str, List[float]]],
@@ -542,7 +498,142 @@ class MMMModel:
             combinations.append(params)
 
         return combinations
-    
+
+    def _optimize_fold_parameters_bayesian(self,
+                                          y: np.ndarray,
+                                          X_spend: np.ndarray,
+                                          X_time: np.ndarray,
+                                          spend_columns: List[str],
+                                          channel_grids: Dict[str, Dict[str, List[float]]],
+                                          progress_callback: Optional[callable] = None,
+                                          fold_idx: int = 0,
+                                          cancellation_check: Optional[callable] = None) -> ModelParameters:
+        """Optimizes parameters for a single fold using Bayesian optimization."""
+        try:
+            import optuna
+            # Suppress Optuna logging except for errors
+            optuna.logging.set_verbosity(optuna.logging.ERROR)
+        except ImportError:
+            raise ValueError("Optuna not installed. Please install with: pip install optuna")
+
+        # Calculate number of trials based on channel count
+        n_channels = len(spend_columns)
+        n_trials = min(1000, 100 * n_channels) if n_channels <= 3 else min(1000, 100 * n_channels)
+
+        logger.info(f"Starting Bayesian optimization for fold {fold_idx + 1}: {n_trials} trials for {n_channels} channels")
+
+        # Track best result
+        best_mape = float('inf')
+        best_params = None
+        last_progress_time = time.time()
+
+        # Create Optuna study
+        study = optuna.create_study(
+            direction="minimize",
+            sampler=optuna.samplers.TPESampler(seed=42)
+        )
+
+        # Define objective function
+        def objective(trial):
+            nonlocal best_mape, best_params, last_progress_time
+
+            # Check for cancellation
+            if cancellation_check and cancellation_check():
+                logger.info(f"Training cancelled during Bayesian optimization at trial {trial.number}")
+                raise optuna.exceptions.OptunaError("Training cancelled by user")
+
+            # Sample parameters for each channel
+            params = {
+                "channel_betas": {},
+                "channel_rs": {}
+            }
+
+            for channel in spend_columns:
+                # Use full theoretical ranges
+                params["channel_betas"][channel] = trial.suggest_float(
+                    f'{channel}_beta', 0.1, 1.0
+                )
+                params["channel_rs"][channel] = trial.suggest_float(
+                    f'{channel}_r', 0.0, 0.99
+                )
+
+            try:
+                # Fit linear model with these transform parameters
+                fitted_params = self._fit_linear_model(y, X_spend, X_time, spend_columns, params)
+
+                # Calculate predictions and MAPE
+                y_pred = self._predict(X_spend, X_time, spend_columns, fitted_params)
+                mape = mean_absolute_percentage_error(y, y_pred) * 100
+
+                # Track best result
+                if mape < best_mape:
+                    best_mape = mape
+                    best_params = fitted_params
+                    logger.info(f"Fold {fold_idx + 1}, Trial {trial.number}: New best MAPE = {mape:.2f}%")
+
+                # Send progress update every 10 seconds
+                current_time = time.time()
+                if progress_callback and current_time - last_progress_time >= 10:
+                    progress_callback({
+                        "type": "bayesian_optimization",
+                        "fold": fold_idx + 1,
+                        "trial": trial.number + 1,
+                        "total_trials": n_trials,
+                        "best_mape": best_mape if best_mape != float('inf') else None,
+                        "current_mape": mape,
+                        "current_params": params
+                    })
+                    last_progress_time = current_time
+
+                # Log progress every 10 trials
+                if trial.number % 10 == 0:
+                    logger.info(
+                        f"Fold {fold_idx + 1}, Trial {trial.number}/{n_trials}: "
+                        f"Current MAPE = {mape:.2f}%, Best = {best_mape:.2f}%"
+                    )
+
+                return mape
+
+            except Exception as e:
+                logger.error(f"Trial {trial.number} failed: {str(e)}")
+                return float('inf')
+
+        try:
+            # Run optimization
+            study.optimize(objective, n_trials=n_trials)
+
+            # Send final progress update
+            if progress_callback:
+                progress_callback({
+                    "type": "bayesian_optimization_complete",
+                    "fold": fold_idx + 1,
+                    "trials_completed": len(study.trials),
+                    "best_mape": best_mape,
+                    "best_params": {
+                        "channel_betas": best_params.channel_betas,
+                        "channel_rs": best_params.channel_rs
+                    } if best_params else None
+                })
+
+            # Check if we found valid parameters
+            if best_params is None:
+                raise ValueError(f"Bayesian optimization failed to find valid parameters for fold {fold_idx + 1}")
+
+            logger.info(
+                f"Bayesian optimization complete for fold {fold_idx + 1}: "
+                f"Best MAPE = {best_mape:.2f}% from {len(study.trials)} trials"
+            )
+
+            return best_params
+
+        except optuna.exceptions.OptunaError as e:
+            if "cancelled" in str(e).lower():
+                raise InterruptedError("Training cancelled by user")
+            raise ValueError(f"Bayesian optimization failed: {str(e)}")
+        except Exception as e:
+            logger.error(f"Bayesian optimization failed for fold {fold_idx + 1}: {str(e)}")
+            raise ValueError(f"Optimization failed: {str(e)}")
+
     def _fit_linear_model(self,
                          y: np.ndarray,
                          X_spend: np.ndarray,

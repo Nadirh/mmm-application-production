@@ -8,6 +8,7 @@ pandas>=1.3.0
 scipy>=1.7.0
 scikit-learn>=1.0.0
 statsmodels>=0.13.0
+optuna>=3.0.0
 
 # Web framework and utilities
 pydantic>=2.0.0
