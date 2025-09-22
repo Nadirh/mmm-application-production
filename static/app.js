@@ -264,7 +264,8 @@ class MMMApp {
                 document.getElementById('cancel-training').style.display = 'block'; // Show cancel button
                 this.startProgressMonitoring();
             } else {
-                this.showTrainingStatus(`❌ Training failed to start: ${result.detail}`, 'error');
+                const errorMessage = result.detail || result.message || JSON.stringify(result);
+                this.showTrainingStatus(`❌ Training failed to start: ${errorMessage}`, 'error');
                 document.getElementById('start-training').disabled = false;
             }
         } catch (error) {

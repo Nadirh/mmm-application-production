@@ -246,21 +246,26 @@ async def train_model_background(upload_id: str, run_id: str, config: Dict[str, 
 
 @router.post("/train")
 async def train_model(
-    upload_id: str,
+    request: Dict[str, Any],
     background_tasks: BackgroundTasks,
-    config: Optional[Dict[str, Any]] = None,
     db: AsyncSession = Depends(get_db)
 ) -> Dict[str, str]:
     """
     Start model training for uploaded data.
-    
+
     Args:
-        upload_id: ID of the uploaded data
-        config: Optional training configuration parameters
-        
+        request: JSON body containing upload_id and optional config
+
     Returns:
         run_id: Unique identifier for this training run
     """
+    # Extract parameters from request body
+    upload_id = request.get("upload_id")
+    config = request.get("config")
+
+    if not upload_id:
+        raise HTTPException(status_code=400, detail="upload_id is required")
+
     # Check if upload session exists in cache or database
     session = None
     if upload_id in upload_sessions:
