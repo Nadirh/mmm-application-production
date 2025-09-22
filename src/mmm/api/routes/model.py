@@ -390,14 +390,11 @@ async def get_channel_classifications(upload_id: str) -> Dict[str, Any]:
     for channel in channel_columns:
         channel_type = settings.classify_channel_type(channel)
 
-        # Get the default center value and generated grid
-        default_center = default_r_centers[channel_type]
-        grid_config = settings.get_parameter_grid_config(channel, None)
-
+        # With Bayesian optimization, we don't need to send r_grid values
+        # The optimization explores the full parameter space automatically
         channel_info[channel] = {
-            "type": channel_type,
-            "default_r": default_center,
-            "r_grid": grid_config["r"]
+            "type": channel_type
+            # Removed default_r and r_grid - not needed with Bayesian optimization
         }
 
     return {
