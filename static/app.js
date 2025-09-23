@@ -456,13 +456,28 @@ class MMMApp {
             // Create detailed fold results display
             let msg = `✅ Fold ${fold} Complete - MAPE: ${mape}%`;
 
-            // Store fold results for later display
+            // Store fold results for later display (check for duplicates)
             if (!this.foldResults) this.foldResults = [];
-            this.foldResults.push({
-                fold: fold,
-                mape: parseFloat(mape),
-                parameters: params
-            });
+
+            // Check if this fold already exists (avoid duplicates)
+            const existingFoldIndex = this.foldResults.findIndex(f => f.fold === fold);
+            if (existingFoldIndex !== -1) {
+                // Update existing fold if MAPE is better
+                if (parseFloat(mape) < this.foldResults[existingFoldIndex].mape) {
+                    this.foldResults[existingFoldIndex] = {
+                        fold: fold,
+                        mape: parseFloat(mape),
+                        parameters: params
+                    };
+                }
+            } else {
+                // Add new fold
+                this.foldResults.push({
+                    fold: fold,
+                    mape: parseFloat(mape),
+                    parameters: params
+                });
+            }
 
             // Display parameters summary
             if (params && params.channel_betas) {
@@ -783,34 +798,53 @@ class MMMApp {
             this.displayTestEquation();
         }
 
-        // Render the charts
-        this.renderChartsAfterTraining();
+        // Render the charts - don't await, let it run asynchronously
+        setTimeout(() => {
+            this.renderChartsAfterTraining();
+        }, 100); // Small delay to ensure DOM is ready
     }
 
     async renderChartsAfterTraining() {
-        console.log('Rendering charts after training completion...');
+        console.log('🎨 Starting chart rendering after training completion...');
 
         // Fetch and render response curves
         try {
+            console.log('📊 Fetching response curves from API...');
             const response = await fetch(`${this.apiUrl}/dashboard/response-curves`);
-            const data = await response.json();
 
-            if (response.ok && data.response_curves) {
-                console.log('Rendering response curves...');
+            if (!response.ok) {
+                console.error('❌ Failed to fetch response curves:', response.status, response.statusText);
+                return;
+            }
+
+            const data = await response.json();
+            console.log('✅ Response curves data received:', data);
+
+            if (data.response_curves) {
+                console.log('📈 Rendering response curves...');
                 this.renderResponseCurvesFromAPI(data);
 
                 // Fetch and render marginal ROI
+                console.log('📊 Fetching marginal ROI data...');
                 await this.fetchAndDisplayMarginalROI();
+
+                console.log('📊 Inserting marginal ROI section...');
                 this.insertMarginalROISection();
+
+                console.log('📊 Rendering marginal ROI charts...');
                 this.renderMarginalROICharts(data);
 
                 // Add Profit Maximizer
+                console.log('💰 Adding profit maximizer...');
                 await this.addProfitMaximizerAtEnd();
 
-                console.log('All charts rendered successfully');
+                console.log('✅ All charts rendered successfully!');
+            } else {
+                console.warn('⚠️ No response curves data in response');
             }
         } catch (error) {
-            console.error('Error rendering charts:', error);
+            console.error('❌ Error rendering charts:', error);
+            console.error('Stack trace:', error.stack);
         }
     }
 
