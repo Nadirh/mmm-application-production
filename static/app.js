@@ -847,10 +847,16 @@ class MMMApp {
     async renderChartsAfterTraining() {
         console.log('🎨 Starting chart rendering after training completion...');
 
+        // Check if we have a runId
+        if (!this.runId) {
+            console.error('❌ No runId available for fetching response curves');
+            return;
+        }
+
         // Fetch and render response curves
         try {
             console.log('📊 Fetching response curves from API...');
-            const response = await fetch(`${this.apiUrl}/dashboard/response-curves`);
+            const response = await fetch(`${this.apiUrl}/model/response-curves/${this.runId}`);
 
             if (!response.ok) {
                 console.error('❌ Failed to fetch response curves:', response.status, response.statusText);
