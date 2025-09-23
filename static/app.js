@@ -1,5 +1,5 @@
-// MMM Frontend Application v1.9.61 with cleaned up Marginal ROI section and fixed budget allocation
-console.log('🚀 MMM App v1.9.61 Loading - CLEANED MARGINAL ROI & FIXED BUDGET ALLOCATION');
+// MMM Frontend Application v1.9.110 with Chart.js canvas reuse fix
+console.log('🚀 MMM App v1.9.110 Loading - CHART.JS CANVAS REUSE FIX');
 
 class MMMApp {
     constructor() {
@@ -9,6 +9,7 @@ class MMMApp {
         this.progressInterval = null;
         this.cvStructureInfo = null;  // Store CV structure info
         this.nestedCVUsed = false;    // Track if nested CV was used
+        this.chartInstances = {};      // Store chart instances to properly destroy them
 
         // Add VISIBLE indicator that JS is working
         this.addVisibleDebugIndicator();
@@ -1242,7 +1243,15 @@ class MMMApp {
             // Create chart
             const ctx = document.getElementById(`chart-${channel}`);
             if (ctx) {
-                new Chart(ctx, {
+                // Destroy existing chart if it exists
+                const chartKey = `response-${channel}`;
+                if (this.chartInstances[chartKey]) {
+                    this.chartInstances[chartKey].destroy();
+                    delete this.chartInstances[chartKey];
+                }
+
+                // Create new chart and store reference
+                this.chartInstances[chartKey] = new Chart(ctx, {
                     type: 'line',
                     data: {
                         labels: spendLevels.map(s => `$${Math.round(s).toLocaleString()}`),
@@ -1397,7 +1406,15 @@ class MMMApp {
                 }
             }
 
-            new Chart(ctx, {
+            // Destroy existing chart if it exists
+            const marginalChartKey = `marginal-roi-${channel}`;
+            if (this.chartInstances[marginalChartKey]) {
+                this.chartInstances[marginalChartKey].destroy();
+                delete this.chartInstances[marginalChartKey];
+            }
+
+            // Create new chart and store reference
+            this.chartInstances[marginalChartKey] = new Chart(ctx, {
                 type: 'line',
                 data: {
                     labels: spendLevels,
@@ -1577,7 +1594,15 @@ class MMMApp {
 
             const ctx = canvas.getContext('2d');
 
-            new Chart(ctx, {
+            // Destroy existing chart if it exists
+            const manualChartKey = `marginal-roi-manual-${channel}`;
+            if (this.chartInstances[manualChartKey]) {
+                this.chartInstances[manualChartKey].destroy();
+                delete this.chartInstances[manualChartKey];
+            }
+
+            // Create new chart and store reference
+            this.chartInstances[manualChartKey] = new Chart(ctx, {
                 type: 'line',
                 data: {
                     labels: spendLevels,
@@ -1805,7 +1830,15 @@ class MMMApp {
             // Create chart
             const ctx = document.getElementById(`chart-${channel}`);
             if (ctx) {
-                new Chart(ctx, {
+                // Destroy existing chart if it exists
+                const chartKey = `response-${channel}`;
+                if (this.chartInstances[chartKey]) {
+                    this.chartInstances[chartKey].destroy();
+                    delete this.chartInstances[chartKey];
+                }
+
+                // Create new chart and store reference
+                this.chartInstances[chartKey] = new Chart(ctx, {
                     type: 'line',
                     data: {
                         labels: spendLevels.map(s => `$${Math.round(s).toLocaleString()}`),
@@ -2027,7 +2060,15 @@ class MMMApp {
         // Create chart
         const ctx = document.getElementById(`mroi-chart-${channel}`);
         if (ctx) {
-            new Chart(ctx, {
+            // Destroy existing chart if it exists
+            const chartKey = `mroi-${channel}`;
+            if (this.chartInstances[chartKey]) {
+                this.chartInstances[chartKey].destroy();
+                delete this.chartInstances[chartKey];
+            }
+
+            // Create new chart and store reference
+            this.chartInstances[chartKey] = new Chart(ctx, {
                 type: 'line',
                 data: {
                     labels: spendLevels.map(s => `$${Math.round(s).toLocaleString()}`),
