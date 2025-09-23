@@ -496,6 +496,22 @@ class MMMApp {
         // Handle parameter selection complete
         if (progress.progress?.type === 'parameter_selection_complete') {
             const data = progress.progress;
+
+            // Check for high variance in fold MAPEs
+            const allMapes = data.all_fold_mapes || [];
+            if (allMapes.length > 0) {
+                const mean = allMapes.reduce((a, b) => a + b, 0) / allMapes.length;
+                const variance = allMapes.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / allMapes.length;
+                const std = Math.sqrt(variance);
+                const cv = std / mean; // Coefficient of variation
+
+                if (cv > 0.5) {
+                    // High variance warning
+                    this.showTrainingStatus(`⚠️ High variance detected in fold MAPEs: ${allMapes.map(m => m.toFixed(1) + '%').join(', ')}`, 'warning');
+                    this.showTrainingStatus(`📊 Using selective parameter averaging due to divergent fold performances`, 'warning');
+                }
+            }
+
             let msg = `📊 Final Parameter Selection: Averaged top ${data.folds_averaged} folds`;
             msg += ` (Folds ${data.top_fold_numbers.join(', ')})`;
             msg += ` with MAPEs: ${data.top_fold_mapes.map(m => m.toFixed(2) + '%').join(', ')}`;

@@ -900,12 +900,40 @@ class MMMModel:
         # Sort folds by MAPE (best first)
         sorted_folds = sorted(cv_folds, key=lambda f: f.mape)
 
-        # Determine how many top folds to average (top 30% or minimum 3)
-        n_folds_to_average = max(3, len(sorted_folds) // 3)
-        n_folds_to_average = min(n_folds_to_average, len(sorted_folds))
-        top_folds = sorted_folds[:n_folds_to_average]
+        # Calculate statistics to detect outliers
+        all_mapes = [f.mape for f in cv_folds]
+        mean_mape = np.mean(all_mapes)
+        std_mape = np.std(all_mapes)
 
-        logger.info(f"Averaging parameters from top {n_folds_to_average} folds (MAPEs: {[f.mape for f in top_folds]})")
+        # Strategy for handling divergent folds:
+        # 1. If standard deviation is high (>50% of mean), be more selective
+        # 2. Check for outliers using z-score
+        high_variance = std_mape > (mean_mape * 0.5) if mean_mape > 0 else False
+
+        if high_variance and len(sorted_folds) >= 2:
+            # High variance detected - be more selective
+            logger.warning(f"High variance in fold MAPEs detected (mean: {mean_mape:.2f}%, std: {std_mape:.2f}%)")
+
+            # Use only folds within 1.5 standard deviations of the best fold
+            best_mape = sorted_folds[0].mape
+            threshold = best_mape + (1.5 * std_mape)
+
+            top_folds = [f for f in sorted_folds if f.mape <= threshold]
+
+            # Ensure we have at least 1 fold but not more than top 50%
+            if len(top_folds) == 0:
+                top_folds = [sorted_folds[0]]  # Use only the best fold
+            elif len(top_folds) > len(sorted_folds) // 2:
+                top_folds = sorted_folds[:len(sorted_folds) // 2]
+
+            n_folds_to_average = len(top_folds)
+            logger.info(f"High variance strategy: Using {n_folds_to_average} folds within threshold (MAPEs: {[f.mape for f in top_folds]})")
+        else:
+            # Normal variance - use standard strategy (top 30% or minimum 3)
+            n_folds_to_average = max(3, len(sorted_folds) // 3)
+            n_folds_to_average = min(n_folds_to_average, len(sorted_folds))
+            top_folds = sorted_folds[:n_folds_to_average]
+            logger.info(f"Standard strategy: Averaging parameters from top {n_folds_to_average} folds (MAPEs: {[f.mape for f in top_folds]})")
 
         # Initialize averaged parameters
         avg_alpha_baseline = sum(f.parameters.alpha_baseline for f in top_folds) / n_folds_to_average
