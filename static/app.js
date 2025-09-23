@@ -1,5 +1,5 @@
-// MMM Frontend Application v1.9.110 with Chart.js canvas reuse fix
-console.log('🚀 MMM App v1.9.110 Loading - CHART.JS CANVAS REUSE FIX');
+// MMM Frontend Application v1.9.111 with duplicate section fixes
+console.log('🚀 MMM App v1.9.111 Loading - DUPLICATE SECTION FIXES');
 
 class MMMApp {
     constructor() {
@@ -871,19 +871,8 @@ class MMMApp {
                 console.log('📈 Rendering response curves...');
                 this.renderResponseCurvesFromAPI(data);
 
-                // Fetch and render marginal ROI
-                console.log('📊 Fetching marginal ROI data...');
-                await this.fetchAndDisplayMarginalROI();
-
-                console.log('📊 Inserting marginal ROI section...');
-                this.insertMarginalROISection();
-
-                console.log('📊 Rendering marginal ROI charts...');
-                this.renderMarginalROICharts(data);
-
-                // Add Profit Maximizer
-                console.log('💰 Adding profit maximizer...');
-                await this.addProfitMaximizerAtEnd();
+                // Skip duplicate rendering - these are already called in the displayResults flow
+                console.log('✅ Skipping duplicate marginal ROI and profit maximizer rendering');
 
                 console.log('✅ All charts rendered successfully!');
             } else {
@@ -1360,6 +1349,13 @@ class MMMApp {
         }
         console.log('✅ Found chart container, adding marginal ROI section');
 
+        // Clear any existing marginal ROI content in this container
+        const existingMarginal = document.getElementById('marginal-roi-charts');
+        if (existingMarginal && existingMarginal.parentElement) {
+            console.log('🧹 Clearing existing marginal ROI section');
+            existingMarginal.parentElement.remove();
+        }
+
         const marginalSection = document.createElement('div');
         marginalSection.innerHTML = `
             <div style="margin-top: 40px; margin-bottom: 20px;">
@@ -1368,7 +1364,7 @@ class MMMApp {
                     Shows the return on investment for the next dollar spent. Values above 1.0 indicate profitable spend.
                 </p>
             </div>
-            <div id="marginal-roi-charts" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 20px;"></div>
+            <div id="marginal-roi-charts-manual" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 20px;"></div>
         `;
         chartContainer.appendChild(marginalSection);
 
@@ -1541,6 +1537,13 @@ class MMMApp {
             return;
         }
         console.log('✅ Found chart container, adding marginal ROI section (manual)');
+
+        // Clear any existing marginal ROI content in this container
+        const existingMarginal = document.getElementById('marginal-roi-charts-manual');
+        if (existingMarginal && existingMarginal.parentElement) {
+            console.log('🧹 Clearing existing manual marginal ROI section');
+            existingMarginal.parentElement.remove();
+        }
 
         const marginalSection = document.createElement('div');
         marginalSection.innerHTML = `
@@ -2152,6 +2155,13 @@ class MMMApp {
 
     addProfitMaximizer(marginalROIByChannel, baselineSpend) {
         console.log('🎯 Adding Profit Maximizer section with data:', marginalROIByChannel);
+
+        // Check if profit maximizer already exists and remove it
+        const existingProfitMaximizer = document.getElementById('profit-maximizer');
+        if (existingProfitMaximizer) {
+            console.log('🧹 Removing existing Profit Maximizer section');
+            existingProfitMaximizer.remove();
+        }
 
         // Store the marginal ROI data for use in optimization
         this.marginalROIByChannel = marginalROIByChannel;
