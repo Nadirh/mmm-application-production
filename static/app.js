@@ -630,6 +630,7 @@ class MMMApp {
         const performance = results.model_performance || results;
         const parameters = results.parameters;
         const confidenceIntervals = results.confidence_intervals || {};
+        const diagnostics = results.diagnostics || {};  // Fix: Define diagnostics
 
         // Extract CV structure info from results
         if (results.cv_structure_info) {
@@ -782,7 +783,35 @@ class MMMApp {
             this.displayTestEquation();
         }
 
-        // Marginal ROI will be displayed after response curves are rendered
+        // Render the charts
+        this.renderChartsAfterTraining();
+    }
+
+    async renderChartsAfterTraining() {
+        console.log('Rendering charts after training completion...');
+
+        // Fetch and render response curves
+        try {
+            const response = await fetch(`${this.apiUrl}/dashboard/response-curves`);
+            const data = await response.json();
+
+            if (response.ok && data.response_curves) {
+                console.log('Rendering response curves...');
+                this.renderResponseCurvesFromAPI(data);
+
+                // Fetch and render marginal ROI
+                await this.fetchAndDisplayMarginalROI();
+                this.insertMarginalROISection();
+                this.renderMarginalROICharts(data);
+
+                // Add Profit Maximizer
+                await this.addProfitMaximizerAtEnd();
+
+                console.log('All charts rendered successfully');
+            }
+        } catch (error) {
+            console.error('Error rendering charts:', error);
+        }
     }
 
     displayParameters(parameters) {

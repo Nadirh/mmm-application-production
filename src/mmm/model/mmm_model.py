@@ -223,6 +223,7 @@ class MMMModel:
                     "type": "cv_structure",
                     "message": f"Using simple CV (data has {n_weeks} weeks, nested CV requires 26+)",
                     "total_weeks": n_weeks,
+                    "total_days": n_days,  # Add total_days like nested CV
                     "holdout_days": n_holdout_days if n_holdout_days > 0 else 0,
                     "cv_days": n_days,
                     "method": "simple"
