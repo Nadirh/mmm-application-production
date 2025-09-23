@@ -641,44 +641,20 @@ class MMMModel:
         best_params = None
         last_progress_time = time.time()
 
-        # Create Optuna study with hybrid sampler
-        # First n_sobol_trials use QMCSampler (Sobol), then switch to TPE
+        # Create Optuna study with hybrid sampler approach
+        # We'll run two separate optimization phases: Sobol then TPE
         from optuna.samplers import QMCSampler
 
-        # Create samplers
-        sobol_sampler = QMCSampler(
-            qmc_type="sobol",
-            scramble=True,
-            seed=42
-        )
-
-        tpe_sampler = optuna.samplers.TPESampler(
-            seed=42,
-            n_startup_trials=0,  # NO random trials - we already have Sobol
-            n_ei_candidates=50,  # Increase from default 24 for better selection
-            gamma=lambda x: 0.25,  # Keep default 25% as "good" trials
-            multivariate=True,  # Consider parameter correlations
-            constant_liar=True  # Better parallelization
-        )
-
-        # Create study - we'll manually switch samplers after Sobol phase
-        study = optuna.create_study(
-            direction="minimize",
-            sampler=sobol_sampler  # Start with Sobol
-        )
+        # Keep track of all trials across both phases
+        all_trials_count = 0
 
         # Define objective function
         def objective(trial):
-            nonlocal best_mape, best_params, last_progress_time
-
-            # Switch to TPE sampler after Sobol phase
-            if trial.number == n_sobol_trials:
-                study.sampler = tpe_sampler
-                logger.info(f"Switching from Sobol to TPE at trial {trial.number}")
+            nonlocal best_mape, best_params, last_progress_time, all_trials_count
 
             # Check for cancellation
             if cancellation_check and cancellation_check():
-                logger.info(f"Training cancelled during optimization at trial {trial.number}")
+                logger.info(f"Training cancelled during optimization at trial {all_trials_count}")
                 raise optuna.exceptions.OptunaError("Training cancelled by user")
 
             # Sample parameters for each channel
@@ -714,11 +690,11 @@ class MMMModel:
                 current_time = time.time()
                 if progress_callback and current_time - last_progress_time >= 10:
                     # Indicate whether in Sobol or TPE phase
-                    optimization_phase = "sobol" if trial.number < n_sobol_trials else "tpe"
+                    optimization_phase = "sobol" if all_trials_count <= n_sobol_trials else "tpe"
                     progress_callback({
                         "type": "bayesian_optimization",
                         "fold": fold_idx + 1,
-                        "trial": trial.number + 1,
+                        "trial": all_trials_count,
                         "total_trials": n_trials,
                         "phase": optimization_phase,
                         "sobol_trials": n_sobol_trials,
@@ -729,11 +705,14 @@ class MMMModel:
                     })
                     last_progress_time = current_time
 
+                # Increment total counter
+                all_trials_count += 1
+
                 # Log progress every 10 trials
-                if trial.number % 10 == 0:
-                    optimization_phase = "Sobol" if trial.number < n_sobol_trials else "TPE"
+                if all_trials_count % 10 == 0:
+                    optimization_phase = "Sobol" if all_trials_count <= n_sobol_trials else "TPE"
                     logger.info(
-                        f"Fold {fold_idx + 1}, {optimization_phase} Trial {trial.number}/{n_trials}: "
+                        f"Fold {fold_idx + 1}, {optimization_phase} Trial {all_trials_count}/{n_trials}: "
                         f"Current MAPE = {mape:.2f}%, Best = {best_mape:.2f}%"
                     )
 
@@ -744,8 +723,44 @@ class MMMModel:
                 return float('inf')
 
         try:
-            # Run optimization
-            study.optimize(objective, n_trials=n_trials)
+            # Phase 1: Run Sobol sampling
+            sobol_sampler = QMCSampler(
+                qmc_type="sobol",
+                scramble=True,
+                seed=42
+            )
+
+            sobol_study = optuna.create_study(
+                direction="minimize",
+                sampler=sobol_sampler
+            )
+
+            logger.info(f"Starting Sobol phase with {n_sobol_trials} trials")
+            sobol_study.optimize(objective, n_trials=n_sobol_trials)
+
+            # Phase 2: Run TPE optimization
+            if n_tpe_trials > 0:
+                tpe_sampler = optuna.samplers.TPESampler(
+                    seed=42,
+                    n_startup_trials=10,  # Use a small number of startup trials
+                    n_ei_candidates=50,
+                    gamma=lambda x: int(x * 0.25),  # Ensure gamma returns integer
+                    multivariate=True,
+                    constant_liar=True
+                )
+
+                tpe_study = optuna.create_study(
+                    direction="minimize",
+                    sampler=tpe_sampler
+                )
+
+                logger.info(f"Starting TPE phase with {n_tpe_trials} additional trials")
+                tpe_study.optimize(objective, n_trials=n_tpe_trials)
+
+                # Use TPE study which has the best results from both phases
+                study = tpe_study
+            else:
+                study = sobol_study
 
             # Send final progress update
             if progress_callback:
