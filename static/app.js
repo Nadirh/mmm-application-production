@@ -1149,6 +1149,7 @@ class MMMApp {
                 <div class="response-curves-grid">
                     ${curvesHtml}
                 </div>
+                <div id="response-curves-charts"></div>
             </div>
         `;
     }
