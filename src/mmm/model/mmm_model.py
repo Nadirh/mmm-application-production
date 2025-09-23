@@ -289,7 +289,7 @@ class MMMModel:
                     "holdout_mape": holdout_mape,
                     "cv_mape": cv_mape,
                     "mape_difference": holdout_mape - cv_mape,
-                    "is_overfit": holdout_mape > cv_mape * 1.2  # Flag if holdout is 20% worse than CV
+                    "is_overfit": bool(holdout_mape > cv_mape * 1.2)  # Flag if holdout is 20% worse than CV
                 })
 
         # Bootstrap confidence intervals
@@ -306,7 +306,7 @@ class MMMModel:
                 "holdout_mape": holdout_mape,
                 "cv_mape": cv_mape,
                 "holdout_days": n_holdout_days,
-                "overfit_warning": holdout_mape > cv_mape * 1.2
+                "overfit_warning": bool(holdout_mape > cv_mape * 1.2)
             }
         
         # Store results
