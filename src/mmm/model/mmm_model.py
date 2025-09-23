@@ -79,36 +79,36 @@ class MMMModel:
         else:
             n_folds = 4
 
-        # Calculate weeks per fold
-        weeks_per_fold = n_weeks // n_folds
-        remainder = n_weeks % n_folds
+        # Calculate weeks per fold (ensure integers)
+        weeks_per_fold = int(n_weeks // n_folds)
+        remainder = int(n_weeks % n_folds)
 
         folds = []
         start_week = 0
 
         for i in range(n_folds):
             # Add remainder weeks to last fold
-            fold_weeks = weeks_per_fold + (remainder if i == n_folds - 1 else 0)
+            fold_weeks = int(weeks_per_fold + (remainder if i == n_folds - 1 else 0))
 
             # Determine outer test size (15-25% of fold, 2-4 weeks max)
-            outer_test = min(4, max(2, fold_weeks // 5))
-            outer_train = fold_weeks - outer_test
+            outer_test = int(min(4, max(2, fold_weeks // 5)))
+            outer_train = int(fold_weeks - outer_test)
 
             # Inner split: approximately 70/30 train/test
-            inner_train = max(5, (outer_train * 7) // 10)
-            inner_test = outer_train - inner_train
+            inner_train = int(max(5, (outer_train * 7) // 10))
+            inner_test = int(outer_train - inner_train)
 
             folds.append({
                 'fold_num': i + 1,
-                'start_week': start_week,
-                'end_week': start_week + fold_weeks - 1,
-                'total_weeks': fold_weeks,
-                'outer_train_weeks': outer_train,
-                'outer_test_weeks': outer_test,
-                'inner_train_weeks': inner_train,
-                'inner_test_weeks': inner_test,
-                'start_day': start_week * 7,
-                'end_day': (start_week + fold_weeks) * 7 - 1
+                'start_week': int(start_week),
+                'end_week': int(start_week + fold_weeks - 1),
+                'total_weeks': int(fold_weeks),
+                'outer_train_weeks': int(outer_train),
+                'outer_test_weeks': int(outer_test),
+                'inner_train_weeks': int(inner_train),
+                'inner_test_weeks': int(inner_test),
+                'start_day': int(start_week * 7),
+                'end_day': int((start_week + fold_weeks) * 7 - 1)
             })
 
             start_week += fold_weeks
@@ -354,11 +354,11 @@ class MMMModel:
                     "weeks": f"{fold_config['start_week']}-{fold_config['end_week']}"
                 })
 
-            # Define outer fold boundaries (in days)
-            outer_train_start = fold_config['start_day']
-            outer_train_end = outer_train_start + (fold_config['outer_train_weeks'] * 7) - 1
-            outer_test_start = outer_train_end + 1
-            outer_test_end = fold_config['end_day']
+            # Define outer fold boundaries (in days) - ensure integers
+            outer_train_start = int(fold_config['start_day'])
+            outer_train_end = int(outer_train_start + (fold_config['outer_train_weeks'] * 7) - 1)
+            outer_test_start = int(outer_train_end + 1)
+            outer_test_end = int(fold_config['end_day'])
 
             # Extract outer training data
             outer_train_mask = slice(outer_train_start, outer_train_end + 1)
@@ -366,10 +366,10 @@ class MMMModel:
             X_spend_outer_train = X_spend[outer_train_mask]
             X_time_outer_train = X_time[outer_train_mask]
 
-            # Define inner fold boundaries
-            inner_train_end = (fold_config['inner_train_weeks'] * 7) - 1
-            inner_test_start = inner_train_end + 1
-            inner_test_end = (fold_config['outer_train_weeks'] * 7) - 1
+            # Define inner fold boundaries - ensure integers
+            inner_train_end = int((fold_config['inner_train_weeks'] * 7) - 1)
+            inner_test_start = int(inner_train_end + 1)
+            inner_test_end = int((fold_config['outer_train_weeks'] * 7) - 1)
 
             # Inner fold data
             inner_train_mask = slice(0, inner_train_end + 1)
@@ -467,10 +467,10 @@ class MMMModel:
                 logger.info(f"Training cancelled during cross-validation at fold {fold_idx}")
                 raise InterruptedError("Training cancelled by user")
             
-            train_start = fold_start
-            train_end = fold_start + self.training_window_days
-            test_start = train_end
-            test_end = test_start + self.test_window_days
+            train_start = int(fold_start)
+            train_end = int(fold_start + self.training_window_days)
+            test_start = int(train_end)
+            test_end = int(test_start + self.test_window_days)
             
             if test_end > total_days:
                 break
