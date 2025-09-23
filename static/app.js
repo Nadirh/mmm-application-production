@@ -609,29 +609,46 @@ class MMMApp {
         document.getElementById('cancel-training').style.display = 'none';
         
         // Fetch and show full results
+        console.log('Attempting to fetch results. RunId:', this.runId);
         if (this.runId) {
             try {
                 this.showTrainingStatus('🎉 Training completed! Fetching results...', 'success');
-                const response = await fetch(`${this.apiUrl}/results/${this.runId}`);
-                const results = await response.json();
-                
+                const url = `${this.apiUrl}/results/${this.runId}`;
+                console.log('Fetching results from:', url);
+                const response = await fetch(url);
+
+                let results;
+                const contentType = response.headers.get("content-type");
+                if (contentType && contentType.indexOf("application/json") !== -1) {
+                    results = await response.json();
+                } else {
+                    const text = await response.text();
+                    console.error('Non-JSON response received:', text);
+                    throw new Error(`Non-JSON response: ${text.substring(0, 200)}`);
+                }
+
                 if (response.ok) {
-                    console.log('Results fetched successfully:', results);
+                    console.log('✅ Results fetched successfully:', results);
                     this.displayResults(results);
                 } else {
-                    console.error('Failed to fetch results:', results);
-                    console.error('Response status:', response.status);
-                    this.showTrainingStatus('🎉 Training completed! (Results unavailable)', 'success');
+                    console.error('❌ Failed to fetch results. Status:', response.status);
+                    console.error('Error response:', results);
+                    this.showTrainingStatus(`🎉 Training completed! (Results unavailable - ${results.detail || 'Unknown error'})`, 'success');
                 }
             } catch (error) {
-                console.error('Error fetching results:', error);
-                this.showTrainingStatus('🎉 Training completed! (Results unavailable)', 'success');
+                console.error('❌ Exception fetching results:', error);
+                console.error('Error details:', error.message);
+                this.showTrainingStatus('🎉 Training completed! (Results unavailable - Network error)', 'success');
             }
         } else {
+            console.warn('⚠️ No runId available, checking for results in progress message');
             // Fallback: try to show results from progress if available
-            if (progress.results) {
+            if (progress && progress.results) {
                 console.log('Using fallback results from progress:', progress.results);
                 this.displayResults(progress.results);
+            } else {
+                console.error('❌ No runId and no results in progress message');
+                this.showTrainingStatus('🎉 Training completed! (Unable to fetch results - no run ID)', 'success');
             }
         }
     }
