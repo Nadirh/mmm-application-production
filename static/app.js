@@ -868,13 +868,14 @@ class MMMApp {
             console.log('✅ Response curves data received:', data);
 
             if (data.response_curves) {
-                console.log('📈 Rendering response curves...');
-                this.renderResponseCurvesFromAPI(data);
+                console.log('📈 Response curves data found - will be rendered in complete dashboard sequence');
+                // Comment out to avoid duplicate rendering
+                // this.renderResponseCurvesFromAPI(data);
 
                 // Skip duplicate rendering - these are already called in the displayResults flow
-                console.log('✅ Skipping duplicate marginal ROI and profit maximizer rendering');
+                console.log('✅ Skipping duplicate rendering - handled in complete dashboard sequence');
 
-                console.log('✅ All charts rendered successfully!');
+                console.log('✅ Response curves will be rendered with proper sequencing');
             } else {
                 console.warn('⚠️ No response curves data in response');
             }
@@ -967,23 +968,22 @@ class MMMApp {
             </div>
         `;
 
-        // Insert sections in correct order: Response Curves FIRST, then Equations
-        console.log('🔧 Inserting sections in correct order...');
+        // Insert sections in NEW order: Equations FIRST, then Response Curves
+        console.log('🔧 Inserting sections with equations before response curves...');
         const resultsGrid = document.getElementById('results-grid');
         if (resultsGrid) {
-            // Insert response curves first (this will appear immediately after results-grid)
-            resultsGrid.insertAdjacentHTML('afterend', responseCurvesSection);
-            console.log('✅ Response curves section inserted first');
+            // Insert equations first
+            resultsGrid.insertAdjacentHTML('afterend', equationsSection);
+            console.log('✅ Equations section inserted first');
 
-            // Insert equations second (this will appear after response curves)
-            const responseCurvesContainer = document.getElementById('response-curves-charts');
-            if (responseCurvesContainer && responseCurvesContainer.parentElement) {
-                responseCurvesContainer.parentElement.insertAdjacentHTML('afterend', equationsSection);
-                console.log('✅ Equations section inserted after response curves');
+            // Insert response curves after equations
+            const equationsElement = resultsGrid.nextElementSibling;
+            if (equationsElement) {
+                equationsElement.insertAdjacentHTML('afterend', responseCurvesSection);
+                console.log('✅ Response curves section inserted after equations');
             } else {
-                // Fallback: insert after results grid if response curves container not found
-                resultsGrid.insertAdjacentHTML('afterend', equationsSection);
-                console.log('⚠️ Equations section inserted after results grid (fallback)');
+                resultsGrid.insertAdjacentHTML('afterend', responseCurvesSection);
+                console.log('⚠️ Response curves section inserted after results grid (fallback)');
             }
 
             // Generate the actual charts after DOM elements are created
@@ -1311,22 +1311,7 @@ class MMMApp {
 
                 console.log(`✅ Chart created for ${channel} with ${confidenceIntervals ? 'confidence intervals' : 'no confidence intervals'}`);
 
-                // Add correlations summary box after the chart
-                const spendCorr = spendCorrelations[channel];
-
-                if (spendCorr !== undefined) {
-                    const correlationHTML = `
-                        <div style="background: #6f42c1; color: white; padding: 15px; margin-top: 10px; border-radius: 8px; font-size: 0.9em;">
-                            <div style="font-weight: bold; margin-bottom: 8px; text-align: center;">📊 Spend Correlation with Profit</div>
-                            <div style="text-align: center;">
-                                <div style="font-size: 1.2em; font-weight: bold;">${Math.round(spendCorr * 100)}%</div>
-                            </div>
-                        </div>
-                    `;
-
-                    // Insert the correlation box after the chart canvas
-                    ctx.parentElement.insertAdjacentHTML('afterend', correlationHTML);
-                }
+                // Spend correlation removed - already displayed in marginal ROI table
             } else {
                 console.error(`❌ Could not find canvas element for ${channel}`);
             }
@@ -1734,9 +1719,10 @@ class MMMApp {
                 console.log('📊 [FLOW] Step 3: Inserting marginal ROI section');
                 this.insertMarginalROISection();
 
-                // 4. Fourth: Render marginal ROI charts
-                console.log('📊 [FLOW] Step 4: Rendering marginal ROI charts');
-                this.renderMarginalROICharts(data);
+                // 4. Fourth: Skip marginal ROI charts - already displayed in table format
+                console.log('📊 [FLOW] Step 4: Skipping marginal ROI charts - already in table');
+                // Commented out to avoid duplicate charts
+                // this.renderMarginalROICharts(data);
 
                 // 5. Fifth: Add Profit Maximizer at the very end
                 console.log('📊 [FLOW] Step 5: Adding Profit Maximizer');
