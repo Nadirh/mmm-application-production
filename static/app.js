@@ -596,7 +596,7 @@ class MMMApp {
         if (this.runId) {
             try {
                 this.showTrainingStatus('🎉 Training completed! Fetching results...', 'success');
-                const response = await fetch(`${this.apiUrl}/model/results/${this.runId}`);
+                const response = await fetch(`${this.apiUrl}/results/${this.runId}`);
                 const results = await response.json();
                 
                 if (response.ok) {
@@ -802,6 +802,13 @@ class MMMApp {
         setTimeout(() => {
             this.renderChartsAfterTraining();
         }, 100); // Small delay to ensure DOM is ready
+
+        // Redisplay holdout validation if we have it
+        if (this.holdoutValidationData) {
+            setTimeout(() => {
+                this.displayHoldoutValidation(this.holdoutValidationData);
+            }, 150);
+        }
     }
 
     async renderChartsAfterTraining() {
@@ -2447,6 +2454,9 @@ class MMMApp {
     }
 
     displayHoldoutValidation(data) {
+        // Store holdout data for later display
+        this.holdoutValidationData = data;
+
         // Create holdout validation section
         let holdoutSection = document.getElementById('holdout-validation-section');
         if (!holdoutSection) {
