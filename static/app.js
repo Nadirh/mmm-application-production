@@ -613,7 +613,7 @@ class MMMApp {
         if (this.runId) {
             try {
                 this.showTrainingStatus('🎉 Training completed! Fetching results...', 'success');
-                const url = `${this.apiUrl}/results/${this.runId}`;
+                const url = `${this.apiUrl}/model/results/${this.runId}`;
                 console.log('Fetching results from:', url);
                 const response = await fetch(url);
 
