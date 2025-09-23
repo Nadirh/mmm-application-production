@@ -142,7 +142,7 @@ class MMMModel:
         # Reserve last 4 weeks (28 days) for final holdout validation
         # This is NEVER used during CV or parameter selection
         n_total_days = len(df)
-        n_holdout_days = min(28, n_total_days // 10)  # 4 weeks or 10% of data, whichever is smaller
+        n_holdout_days = int(min(28, n_total_days // 10))  # 4 weeks or 10% of data, whichever is smaller
 
         if n_total_days < 56:  # Less than 8 weeks total
             logger.warning(f"Only {n_total_days} days available. Need at least 56 days for holdout validation.")
@@ -150,7 +150,7 @@ class MMMModel:
 
         # Split data into CV portion and holdout
         if n_holdout_days > 0:
-            n_cv_days = n_total_days - n_holdout_days
+            n_cv_days = int(n_total_days - n_holdout_days)
 
             # CV data (used for cross-validation and parameter selection)
             df_cv = df.iloc[:n_cv_days].copy()
@@ -167,12 +167,14 @@ class MMMModel:
             logger.info(f"Data split: {n_cv_days} days for CV, {n_holdout_days} days for final holdout")
         else:
             # Use all data for CV if insufficient for holdout
+            df_cv = df  # Use the entire dataframe
             y = df["profit"].values
             X_spend = df[spend_columns].values
             X_time = df["days_since_start"].values
             y_holdout = None
             X_spend_holdout = None
             X_time_holdout = None
+            n_holdout_days = 0
 
         # Calculate data size and fold structure (using CV data only)
         n_days = len(y)
