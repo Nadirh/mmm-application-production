@@ -1,5 +1,5 @@
-// MMM Frontend Application v1.9.111 with duplicate section fixes
-console.log('🚀 MMM App v1.9.111 Loading - DUPLICATE SECTION FIXES');
+// MMM Frontend Application v1.9.112 with critical error fixes
+console.log('🚀 MMM App v1.9.112 Loading - CRITICAL ERROR FIXES');
 
 class MMMApp {
     constructor() {
@@ -1368,7 +1368,7 @@ class MMMApp {
         `;
         chartContainer.appendChild(marginalSection);
 
-        const marginalChartsContainer = document.getElementById('marginal-roi-charts');
+        const marginalChartsContainer = document.getElementById('marginal-roi-charts-manual');
 
         Object.keys(responseCurves).forEach(channel => {
             const curveData = responseCurves[channel];
@@ -1752,6 +1752,8 @@ class MMMApp {
         // Fallback to manual generation
         console.log('📊 [FLOW] Using manual generation fallback');
         const { channel_alphas, channel_betas, channel_rs } = parameters;
+        // Define confidenceIntervals as empty for manual generation
+        const confidenceIntervals = {};
         Object.keys(channel_alphas).forEach(channel => {
             const alpha = channel_alphas[channel];
             const beta = channel_betas[channel];
