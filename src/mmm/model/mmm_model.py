@@ -138,11 +138,43 @@ class MMMModel:
         """
         # Prepare data
         spend_columns = [col for col in channel_grids.keys()]
-        y = df["profit"].values
-        X_spend = df[spend_columns].values
-        X_time = df["days_since_start"].values
 
-        # Calculate data size and fold structure
+        # Reserve last 4 weeks (28 days) for final holdout validation
+        # This is NEVER used during CV or parameter selection
+        n_total_days = len(df)
+        n_holdout_days = min(28, n_total_days // 10)  # 4 weeks or 10% of data, whichever is smaller
+
+        if n_total_days < 56:  # Less than 8 weeks total
+            logger.warning(f"Only {n_total_days} days available. Need at least 56 days for holdout validation.")
+            n_holdout_days = 0  # Skip holdout if insufficient data
+
+        # Split data into CV portion and holdout
+        if n_holdout_days > 0:
+            n_cv_days = n_total_days - n_holdout_days
+
+            # CV data (used for cross-validation and parameter selection)
+            df_cv = df.iloc[:n_cv_days].copy()
+            y = df_cv["profit"].values
+            X_spend = df_cv[spend_columns].values
+            X_time = df_cv["days_since_start"].values
+
+            # Holdout data (used ONLY for final validation)
+            df_holdout = df.iloc[n_cv_days:].copy()
+            y_holdout = df_holdout["profit"].values
+            X_spend_holdout = df_holdout[spend_columns].values
+            X_time_holdout = df_holdout["days_since_start"].values
+
+            logger.info(f"Data split: {n_cv_days} days for CV, {n_holdout_days} days for final holdout")
+        else:
+            # Use all data for CV if insufficient for holdout
+            y = df["profit"].values
+            X_spend = df[spend_columns].values
+            X_time = df["days_since_start"].values
+            y_holdout = None
+            X_spend_holdout = None
+            X_time_holdout = None
+
+        # Calculate data size and fold structure (using CV data only)
         n_days = len(y)
         n_weeks = n_days // 7
         cv_structure_info = None  # Will store CV structure for results
@@ -158,6 +190,8 @@ class MMMModel:
                     "total_weeks": n_weeks,
                     "total_days": n_days,
                     "n_outer_folds": cv_structure['n_outer_folds'],
+                    "holdout_days": n_holdout_days if n_holdout_days > 0 else 0,
+                    "cv_days": n_days,
                     "fold_details": []
                 }
 
@@ -187,6 +221,8 @@ class MMMModel:
                     "type": "cv_structure",
                     "message": f"Using simple CV (data has {n_weeks} weeks, nested CV requires 26+)",
                     "total_weeks": n_weeks,
+                    "holdout_days": n_holdout_days if n_holdout_days > 0 else 0,
+                    "cv_days": n_days,
                     "method": "simple"
                 }
                 progress_callback(simple_cv_info)
@@ -198,24 +234,77 @@ class MMMModel:
         
         # Select best parameters based on CV performance (averages top folds)
         best_params, n_folds_averaged = self._select_best_parameters(cv_folds)
-        
-        # Fit final model on full data
+
+        # Report final parameter selection to dashboard
+        if progress_callback:
+            # Get MAPEs for all folds for reporting
+            fold_mapes = [fold.mape for fold in cv_folds]
+            sorted_folds = sorted(cv_folds, key=lambda f: f.mape)
+            top_folds = sorted_folds[:n_folds_averaged]
+
+            progress_callback({
+                "type": "parameter_selection_complete",
+                "all_fold_mapes": fold_mapes,
+                "folds_averaged": n_folds_averaged,
+                "top_fold_numbers": [f.fold_number for f in top_folds],
+                "top_fold_mapes": [f.mape for f in top_folds],
+                "final_parameters": {
+                    "alpha_baseline": best_params.alpha_baseline,
+                    "alpha_trend": best_params.alpha_trend,
+                    "channel_alphas": best_params.channel_alphas,
+                    "channel_betas": best_params.channel_betas,
+                    "channel_rs": best_params.channel_rs
+                }
+            })
+
+        # Fit final model on CV data (not including holdout)
         final_params = self._fit_final_model(y, X_spend, X_time, spend_columns, best_params)
-        
-        # Calculate fitted values and metrics
+
+        # Calculate fitted values and metrics on CV data
         fitted_values = self._predict(X_spend, X_time, spend_columns, final_params)
         residuals = y - fitted_values
         r_squared = 1 - np.var(residuals) / np.var(y)
         mape = mean_absolute_percentage_error(y, fitted_values) * 100
         cv_mape = np.mean([fold.mape for fold in cv_folds])
-        
+
+        # Perform final holdout validation if we have holdout data
+        holdout_mape = None
+        if y_holdout is not None:
+            logger.info(f"Performing final holdout validation on {n_holdout_days} days")
+
+            # Predict on holdout set using final model parameters
+            y_pred_holdout = self._predict(X_spend_holdout, X_time_holdout, spend_columns, final_params)
+            holdout_mape = mean_absolute_percentage_error(y_holdout, y_pred_holdout) * 100
+
+            logger.info(f"Holdout validation MAPE: {holdout_mape:.2f}% (CV MAPE: {cv_mape:.2f}%)")
+
+            # Report holdout results to dashboard
+            if progress_callback:
+                progress_callback({
+                    "type": "holdout_validation_complete",
+                    "holdout_days": n_holdout_days,
+                    "holdout_mape": holdout_mape,
+                    "cv_mape": cv_mape,
+                    "mape_difference": holdout_mape - cv_mape,
+                    "is_overfit": holdout_mape > cv_mape * 1.2  # Flag if holdout is 20% worse than CV
+                })
+
         # Bootstrap confidence intervals
         confidence_intervals = self._calculate_confidence_intervals(
             y, X_spend, X_time, spend_columns, final_params
         )
-        
-        # Calculate diagnostics
-        diagnostics = self._calculate_diagnostics(y, fitted_values, residuals, df, spend_columns, final_params)
+
+        # Calculate diagnostics (use CV data for diagnostics)
+        diagnostics = self._calculate_diagnostics(y, fitted_values, residuals, df_cv if n_holdout_days > 0 else df, spend_columns, final_params)
+
+        # Add holdout information to diagnostics
+        if holdout_mape is not None:
+            diagnostics["holdout_validation"] = {
+                "holdout_mape": holdout_mape,
+                "cv_mape": cv_mape,
+                "holdout_days": n_holdout_days,
+                "overfit_warning": holdout_mape > cv_mape * 1.2
+            }
         
         # Store results
         self.results = ModelResults(
@@ -339,10 +428,18 @@ class MMMModel:
             logger.info(f"Outer Fold {fold_num} completed: MAPE={fold_mape:.2f}%")
 
             if progress_callback:
+                # Send detailed fold results including all parameters
                 progress_callback({
                     "type": "outer_fold_complete",
                     "fold": fold_num,
-                    "mape": fold_mape
+                    "mape": fold_mape,
+                    "parameters": {
+                        "alpha_baseline": final_params.alpha_baseline,
+                        "alpha_trend": final_params.alpha_trend,
+                        "channel_alphas": final_params.channel_alphas,
+                        "channel_betas": final_params.channel_betas,
+                        "channel_rs": final_params.channel_rs
+                    }
                 })
 
         return outer_folds
@@ -412,7 +509,14 @@ class MMMModel:
                     "type": "fold_complete",
                     "fold": fold_idx + 1,
                     "total_folds": len(list(fold_starts)),
-                    "mape": fold_mape
+                    "mape": fold_mape,
+                    "parameters": {
+                        "alpha_baseline": best_params.alpha_baseline,
+                        "alpha_trend": best_params.alpha_trend,
+                        "channel_alphas": best_params.channel_alphas,
+                        "channel_betas": best_params.channel_betas,
+                        "channel_rs": best_params.channel_rs
+                    }
                 })
         
         return folds
@@ -516,30 +620,63 @@ class MMMModel:
         except ImportError:
             raise ValueError("Optuna not installed. Please install with: pip install optuna")
 
-        # Calculate number of trials based on channel count
+        # Calculate number of trials based on channel count (doubled for better optimization)
         n_channels = len(spend_columns)
-        n_trials = min(1000, 100 * n_channels) if n_channels <= 3 else min(1000, 100 * n_channels)
+        if n_channels <= 3:
+            n_trials = min(2000, 200 * n_channels)  # 200-600 trials for 1-3 channels
+        else:
+            n_trials = min(2000, 200 * n_channels)  # 800+ trials for 4+ channels
 
-        logger.info(f"Starting Bayesian optimization for fold {fold_idx + 1}: {n_trials} trials for {n_channels} channels")
+        # Calculate Sobol/TPE split (20% Sobol, 80% TPE)
+        n_sobol_trials = int(n_trials * 0.2)
+        n_tpe_trials = n_trials - n_sobol_trials
+
+        logger.info(f"Starting hybrid optimization for fold {fold_idx + 1}: "
+                   f"{n_sobol_trials} Sobol + {n_tpe_trials} TPE trials for {n_channels} channels")
 
         # Track best result
         best_mape = float('inf')
         best_params = None
         last_progress_time = time.time()
 
-        # Create Optuna study
+        # Create Optuna study with hybrid sampler
+        # First n_sobol_trials use QMCSampler (Sobol), then switch to TPE
+        from optuna.samplers import QMCSampler
+
+        # Create samplers
+        sobol_sampler = QMCSampler(
+            qmc_type="sobol",
+            scramble=True,
+            seed=42
+        )
+
+        tpe_sampler = optuna.samplers.TPESampler(
+            seed=42,
+            n_startup_trials=0,  # NO random trials - we already have Sobol
+            n_ei_candidates=50,  # Increase from default 24 for better selection
+            gamma=lambda x: 0.25,  # Keep default 25% as "good" trials
+            multivariate=True,  # Consider parameter correlations
+            constant_liar=True  # Better parallelization
+        )
+
+        # Create study - we'll manually switch samplers after Sobol phase
         study = optuna.create_study(
             direction="minimize",
-            sampler=optuna.samplers.TPESampler(seed=42)
+            sampler=sobol_sampler  # Start with Sobol
         )
 
         # Define objective function
         def objective(trial):
             nonlocal best_mape, best_params, last_progress_time
 
+            # Switch to TPE sampler after Sobol phase
+            if trial.number == n_sobol_trials:
+                study.sampler = tpe_sampler
+                logger.info(f"Switching from Sobol to TPE at trial {trial.number}")
+
             # Check for cancellation
             if cancellation_check and cancellation_check():
-                logger.info(f"Training cancelled during Bayesian optimization at trial {trial.number}")
+                logger.info(f"Training cancelled during optimization at trial {trial.number}")
                 raise optuna.exceptions.OptunaError("Training cancelled by user")
 
             # Sample parameters for each channel
@@ -549,12 +686,12 @@ class MMMModel:
             }
 
             for channel in spend_columns:
-                # Use full theoretical ranges
+                # Use full range for both beta and r parameters
                 params["channel_betas"][channel] = trial.suggest_float(
-                    f'{channel}_beta', 0.1, 1.0
+                    f'{channel}_beta', 0.01, 0.99
                 )
                 params["channel_rs"][channel] = trial.suggest_float(
-                    f'{channel}_r', 0.0, 0.99
+                    f'{channel}_r', 0.01, 0.99
                 )
 
             try:
@@ -574,11 +711,16 @@ class MMMModel:
                 # Send progress update every 10 seconds
                 current_time = time.time()
                 if progress_callback and current_time - last_progress_time >= 10:
+                    # Indicate whether in Sobol or TPE phase
+                    optimization_phase = "sobol" if trial.number < n_sobol_trials else "tpe"
                     progress_callback({
                         "type": "bayesian_optimization",
                         "fold": fold_idx + 1,
                         "trial": trial.number + 1,
                         "total_trials": n_trials,
+                        "phase": optimization_phase,
+                        "sobol_trials": n_sobol_trials,
+                        "tpe_trials": n_tpe_trials,
                         "best_mape": best_mape if best_mape != float('inf') else None,
                         "current_mape": mape,
                         "current_params": params
@@ -587,8 +729,9 @@ class MMMModel:
 
                 # Log progress every 10 trials
                 if trial.number % 10 == 0:
+                    optimization_phase = "Sobol" if trial.number < n_sobol_trials else "TPE"
                     logger.info(
-                        f"Fold {fold_idx + 1}, Trial {trial.number}/{n_trials}: "
+                        f"Fold {fold_idx + 1}, {optimization_phase} Trial {trial.number}/{n_trials}: "
                         f"Current MAPE = {mape:.2f}%, Best = {best_mape:.2f}%"
                     )
 
@@ -608,6 +751,8 @@ class MMMModel:
                     "type": "bayesian_optimization_complete",
                     "fold": fold_idx + 1,
                     "trials_completed": len(study.trials),
+                    "sobol_trials": n_sobol_trials,
+                    "tpe_trials": n_tpe_trials,
                     "best_mape": best_mape,
                     "best_params": {
                         "channel_betas": best_params.channel_betas,
@@ -617,10 +762,10 @@ class MMMModel:
 
             # Check if we found valid parameters
             if best_params is None:
-                raise ValueError(f"Bayesian optimization failed to find valid parameters for fold {fold_idx + 1}")
+                raise ValueError(f"Hybrid Sobol/TPE optimization failed to find valid parameters for fold {fold_idx + 1}")
 
             logger.info(
-                f"Bayesian optimization complete for fold {fold_idx + 1}: "
+                f"Hybrid optimization complete for fold {fold_idx + 1}: "
                 f"Best MAPE = {best_mape:.2f}% from {len(study.trials)} trials"
             )
 

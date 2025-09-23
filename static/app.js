@@ -422,7 +422,22 @@ class MMMApp {
         // Handle CV structure display
         if (progress.progress?.type === 'cv_structure') {
             console.log('Displaying CV structure!');
+            this.cvStructureInfo = progress.progress;
+
+            // Display holdout info if present
+            if (progress.progress.holdout_days > 0) {
+                const msg = `📊 Data Split: ${progress.progress.cv_days} days for CV, ${progress.progress.holdout_days} days for final holdout validation`;
+                this.showTrainingStatus(msg, 'info');
+            }
+
             this.displayCVStructure(progress.progress);
+            return;
+        }
+
+        // Handle holdout validation complete
+        if (progress.progress?.type === 'holdout_validation_complete') {
+            const data = progress.progress;
+            this.displayHoldoutValidation(data);
             return;
         }
 
@@ -433,9 +448,49 @@ class MMMApp {
             return;
         }
 
-        if (progress.progress?.type === 'outer_fold_complete') {
-            const msg = `✅ Outer Fold ${progress.progress.fold} Complete - MAPE: ${progress.progress.mape.toFixed(2)}%`;
+        if (progress.progress?.type === 'outer_fold_complete' || progress.progress?.type === 'fold_complete') {
+            const fold = progress.progress.fold;
+            const mape = progress.progress.mape.toFixed(2);
+            const params = progress.progress.parameters;
+
+            // Create detailed fold results display
+            let msg = `✅ Fold ${fold} Complete - MAPE: ${mape}%`;
+
+            // Store fold results for later display
+            if (!this.foldResults) this.foldResults = [];
+            this.foldResults.push({
+                fold: fold,
+                mape: parseFloat(mape),
+                parameters: params
+            });
+
+            // Display parameters summary
+            if (params && params.channel_betas) {
+                const channels = Object.keys(params.channel_betas);
+                const paramSummary = channels.slice(0, 2).map(ch =>
+                    `${ch}: β=${params.channel_betas[ch].toFixed(3)}, r=${params.channel_rs[ch].toFixed(3)}`
+                ).join(', ');
+                msg += ` | ${paramSummary}${channels.length > 2 ? '...' : ''}`;
+            }
+
             this.showTrainingStatus(msg, 'success');
+            this.displayFoldResults();
+            return;
+        }
+
+        // Handle parameter selection complete
+        if (progress.progress?.type === 'parameter_selection_complete') {
+            const data = progress.progress;
+            let msg = `📊 Final Parameter Selection: Averaged top ${data.folds_averaged} folds`;
+            msg += ` (Folds ${data.top_fold_numbers.join(', ')})`;
+            msg += ` with MAPEs: ${data.top_fold_mapes.map(m => m.toFixed(2) + '%').join(', ')}`;
+
+            this.showTrainingStatus(msg, 'info');
+
+            // Display final parameters
+            if (data.final_parameters) {
+                this.displayFinalParameters(data.final_parameters);
+            }
             return;
         }
 
@@ -588,19 +643,35 @@ class MMMApp {
         console.log('*** EQUATION DEBUG: Extracted parameters:', parameters);
         console.log('*** EQUATION DEBUG: Extracted confidence intervals:', confidenceIntervals);
         console.log('Extracted parameters:', parameters);
-        
+
+        // Check if holdout validation exists
+        const holdoutData = diagnostics?.holdout_validation;
+        console.log('Holdout validation data:', holdoutData);
+
         const resultsHtml = `
-            <div class="metric-card">
-                <div class="metric-value">${performance.cv_mape?.toFixed(3) || 'N/A'}</div>
-                <div class="metric-label">CV MAPE</div>
+            <div class="metric-card" style="${holdoutData ? '' : 'grid-column: span 1;'}">
+                <div class="metric-value">${performance.cv_mape?.toFixed(2) || 'N/A'}%</div>
+                <div class="metric-label">CV MAPE<br><span style="font-size: 0.75rem; font-weight: normal; opacity: 0.8;">(Cross-validation)</span></div>
             </div>
+            ${holdoutData ? `
+            <div class="metric-card" style="background: ${holdoutData.overfit_warning ? '#fff3cd' : '#d4edda'}; border: 2px solid ${holdoutData.overfit_warning ? '#ffc107' : '#28a745'};">
+                <div class="metric-value" style="color: ${holdoutData.overfit_warning ? '#856404' : '#155724'};">
+                    ${holdoutData.holdout_mape.toFixed(2)}%
+                </div>
+                <div class="metric-label" style="color: ${holdoutData.overfit_warning ? '#856404' : '#155724'};">
+                    Holdout MAPE
+                    <br><span style="font-size: 0.75rem; font-weight: normal;">
+                    ${holdoutData.overfit_warning ? '⚠️ Overfit' : '✅ Valid'} (${holdoutData.holdout_days}d)
+                    </span>
+                </div>
+            </div>` : ''}
             <div class="metric-card">
                 <div class="metric-value">${performance.r_squared?.toFixed(3) || 'N/A'}</div>
-                <div class="metric-label">R-Squared</div>
+                <div class="metric-label">R-Squared<br><span style="font-size: 0.75rem; font-weight: normal; opacity: 0.8;">(Training fit)</span></div>
             </div>
             <div class="metric-card">
-                <div class="metric-value">${(performance.mape || performance.final_mape)?.toFixed(3) || 'N/A'}</div>
-                <div class="metric-label">Final MAPE</div>
+                <div class="metric-value">${(performance.mape || performance.final_mape)?.toFixed(2) || 'N/A'}%</div>
+                <div class="metric-label">Training MAPE<br><span style="font-size: 0.75rem; font-weight: normal; opacity: 0.8;">(In-sample)</span></div>
             </div>
             ${this.nestedCVUsed ?
                 `<div class="metric-card" style="background: #e3f2fd; border: 2px solid #1976d2;">
@@ -2247,6 +2318,202 @@ class MMMApp {
         return name.split('_').map(word =>
             word.charAt(0).toUpperCase() + word.slice(1)
         ).join(' ');
+    }
+
+    displayFoldResults() {
+        // Create or update fold results table
+        if (!this.foldResults || this.foldResults.length === 0) return;
+
+        // Check if fold results section exists, if not create it
+        let foldResultsSection = document.getElementById('fold-results-section');
+        if (!foldResultsSection) {
+            foldResultsSection = document.createElement('div');
+            foldResultsSection.id = 'fold-results-section';
+            foldResultsSection.className = 'section';
+            foldResultsSection.innerHTML = `
+                <h3>📊 Cross-Validation Fold Results</h3>
+                <div id="fold-results-table"></div>
+            `;
+
+            // Insert after progress section
+            const progressSection = document.getElementById('progress-section');
+            if (progressSection) {
+                progressSection.parentNode.insertBefore(foldResultsSection, progressSection.nextSibling);
+            }
+        }
+
+        // Build fold results table
+        const tableHtml = `
+            <table class="fold-results-table" style="width: 100%; margin-top: 10px; border-collapse: collapse;">
+                <thead>
+                    <tr style="background: #f5f5f5;">
+                        <th style="padding: 8px; border: 1px solid #ddd;">Fold</th>
+                        <th style="padding: 8px; border: 1px solid #ddd;">MAPE (%)</th>
+                        ${this.foldResults[0]?.parameters?.channel_betas ?
+                            Object.keys(this.foldResults[0].parameters.channel_betas)
+                                .map(ch => `<th style="padding: 8px; border: 1px solid #ddd;" colspan="2">${this.formatChannelName(ch)}</th>`)
+                                .join('') : ''}
+                    </tr>
+                    ${this.foldResults[0]?.parameters?.channel_betas ?
+                        `<tr style="background: #f9f9f9;">
+                            <th style="padding: 4px; border: 1px solid #ddd;"></th>
+                            <th style="padding: 4px; border: 1px solid #ddd;"></th>
+                            ${Object.keys(this.foldResults[0].parameters.channel_betas)
+                                .map(() => `<th style="padding: 4px; border: 1px solid #ddd;">β</th><th style="padding: 4px; border: 1px solid #ddd;">r</th>`)
+                                .join('')}
+                        </tr>` : ''}
+                </thead>
+                <tbody>
+                    ${this.foldResults.map(fold => {
+                        const params = fold.parameters;
+                        return `<tr>
+                            <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${fold.fold}</td>
+                            <td style="padding: 8px; border: 1px solid #ddd; text-align: center; font-weight: bold;">${fold.mape.toFixed(2)}</td>
+                            ${params?.channel_betas ?
+                                Object.keys(params.channel_betas).map(ch =>
+                                    `<td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${params.channel_betas[ch].toFixed(3)}</td>
+                                     <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${params.channel_rs[ch].toFixed(3)}</td>`
+                                ).join('') : ''}
+                        </tr>`;
+                    }).join('')}
+                </tbody>
+            </table>
+        `;
+
+        document.getElementById('fold-results-table').innerHTML = tableHtml;
+    }
+
+    displayHoldoutValidation(data) {
+        // Create holdout validation section
+        let holdoutSection = document.getElementById('holdout-validation-section');
+        if (!holdoutSection) {
+            holdoutSection = document.createElement('div');
+            holdoutSection.id = 'holdout-validation-section';
+            holdoutSection.className = 'section';
+            holdoutSection.style.marginTop = '20px';
+
+            // Insert after final params section or fold results
+            const finalParamsSection = document.getElementById('final-params-section');
+            const foldResultsSection = document.getElementById('fold-results-section');
+            const referenceSection = finalParamsSection || foldResultsSection || document.getElementById('progress-section');
+
+            if (referenceSection) {
+                referenceSection.parentNode.insertBefore(holdoutSection, referenceSection.nextSibling);
+            }
+        }
+
+        // Determine validation quality
+        const mapeRatio = data.holdout_mape / data.cv_mape;
+        let statusColor, statusText, statusIcon;
+
+        if (mapeRatio < 1.1) {
+            statusColor = '#4CAF50';  // Green
+            statusText = 'Excellent - No overfitting detected';
+            statusIcon = '✅';
+        } else if (mapeRatio < 1.2) {
+            statusColor = '#FF9800';  // Orange
+            statusText = 'Good - Minor overfitting';
+            statusIcon = '⚠️';
+        } else {
+            statusColor = '#F44336';  // Red
+            statusText = 'Warning - Significant overfitting detected';
+            statusIcon = '❌';
+        }
+
+        // Build holdout validation display
+        holdoutSection.innerHTML = `
+            <h3>🎯 Final Holdout Validation</h3>
+            <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-top: 10px; border-left: 4px solid ${statusColor};">
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-bottom: 15px;">
+                    <div style="text-align: center;">
+                        <div style="font-size: 24px; font-weight: bold; color: #333;">${data.holdout_mape.toFixed(2)}%</div>
+                        <div style="color: #666; margin-top: 5px;">Holdout MAPE</div>
+                        <div style="font-size: 12px; color: #999; margin-top: 3px;">(${data.holdout_days} days)</div>
+                    </div>
+                    <div style="text-align: center;">
+                        <div style="font-size: 24px; font-weight: bold; color: #333;">${data.cv_mape.toFixed(2)}%</div>
+                        <div style="color: #666; margin-top: 5px;">CV MAPE</div>
+                        <div style="font-size: 12px; color: #999; margin-top: 3px;">(avg of folds)</div>
+                    </div>
+                    <div style="text-align: center;">
+                        <div style="font-size: 24px; font-weight: bold; color: ${data.mape_difference > 0 ? '#F44336' : '#4CAF50'};">
+                            ${data.mape_difference > 0 ? '+' : ''}${data.mape_difference.toFixed(2)}%
+                        </div>
+                        <div style="color: #666; margin-top: 5px;">Difference</div>
+                        <div style="font-size: 12px; color: #999; margin-top: 3px;">(${mapeRatio.toFixed(2)}x)</div>
+                    </div>
+                </div>
+                <div style="padding: 10px; background: white; border-radius: 4px; display: flex; align-items: center;">
+                    <span style="font-size: 20px; margin-right: 10px;">${statusIcon}</span>
+                    <div>
+                        <div style="font-weight: bold; color: ${statusColor};">${statusText}</div>
+                        <div style="font-size: 12px; color: #666; margin-top: 2px;">
+                            The model's performance on unseen holdout data ${
+                                mapeRatio < 1.1 ? 'closely matches' :
+                                mapeRatio < 1.2 ? 'is slightly worse than' :
+                                'is significantly worse than'
+                            } the cross-validation results.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // Also show status message
+        const msg = `🎯 Holdout Validation Complete: MAPE = ${data.holdout_mape.toFixed(2)}% ${statusIcon}`;
+        this.showTrainingStatus(msg, data.is_overfit ? 'error' : 'success');
+    }
+
+    displayFinalParameters(params) {
+        // Create final parameters section
+        let finalParamsSection = document.getElementById('final-params-section');
+        if (!finalParamsSection) {
+            finalParamsSection = document.createElement('div');
+            finalParamsSection.id = 'final-params-section';
+            finalParamsSection.className = 'section';
+            finalParamsSection.style.marginTop = '20px';
+            finalParamsSection.innerHTML = `
+                <h3>🎯 Final Selected Parameters</h3>
+                <div id="final-params-content"></div>
+            `;
+
+            const foldResultsSection = document.getElementById('fold-results-section');
+            if (foldResultsSection) {
+                foldResultsSection.parentNode.insertBefore(finalParamsSection, foldResultsSection.nextSibling);
+            }
+        }
+
+        // Build parameters display
+        const paramsHtml = `
+            <div style="background: #f0f8ff; padding: 15px; border-radius: 8px; margin-top: 10px;">
+                <div style="margin-bottom: 10px;">
+                    <strong>Baseline Parameters:</strong>
+                    <span style="margin-left: 10px;">α_baseline = ${params.alpha_baseline.toFixed(4)}, α_trend = ${params.alpha_trend.toFixed(6)}</span>
+                </div>
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="background: #e0f0ff;">
+                            <th style="padding: 8px; border: 1px solid #ccc;">Channel</th>
+                            <th style="padding: 8px; border: 1px solid #ccc;">Alpha (α)</th>
+                            <th style="padding: 8px; border: 1px solid #ccc;">Beta (β)</th>
+                            <th style="padding: 8px; border: 1px solid #ccc;">R (memory)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${Object.keys(params.channel_alphas).map(ch => `
+                            <tr>
+                                <td style="padding: 8px; border: 1px solid #ccc; font-weight: bold;">${this.formatChannelName(ch)}</td>
+                                <td style="padding: 8px; border: 1px solid #ccc; text-align: center;">${params.channel_alphas[ch].toFixed(4)}</td>
+                                <td style="padding: 8px; border: 1px solid #ccc; text-align: center;">${params.channel_betas[ch].toFixed(3)}</td>
+                                <td style="padding: 8px; border: 1px solid #ccc; text-align: center;">${params.channel_rs[ch].toFixed(3)}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+
+        document.getElementById('final-params-content').innerHTML = paramsHtml;
     }
 }
 
