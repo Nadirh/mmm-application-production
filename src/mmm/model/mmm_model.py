@@ -38,6 +38,7 @@ class ModelResults:
     diagnostics: Dict[str, Any]
     n_folds_averaged: int = 1  # Number of folds averaged for parameters
     cv_structure_info: Optional[Dict[str, Any]] = None  # CV structure details
+    fold_parameters: Optional[List[Dict[str, Any]]] = None  # Parameters for each fold
 
 
 @dataclass
@@ -238,6 +239,20 @@ class MMMModel:
         # Select best parameters based on CV performance (averages top folds)
         best_params, n_folds_averaged = self._select_best_parameters(cv_folds)
 
+        # Extract fold parameters from cv_folds for storing in results
+        fold_parameters = []
+        for fold in cv_folds:
+            if hasattr(fold, 'parameters') and fold.parameters:
+                fold_parameters.append({
+                    "fold": fold.fold_number,
+                    "mape": fold.mape,
+                    "alpha_baseline": fold.parameters.alpha_baseline,
+                    "alpha_trend": fold.parameters.alpha_trend,
+                    "channel_alphas": fold.parameters.channel_alphas,
+                    "channel_betas": fold.parameters.channel_betas,
+                    "channel_rs": fold.parameters.channel_rs
+                })
+
         # Report final parameter selection to dashboard
         if progress_callback:
             # Get MAPEs for all folds for reporting
@@ -320,7 +335,8 @@ class MMMModel:
             confidence_intervals=confidence_intervals,
             diagnostics=diagnostics,
             n_folds_averaged=n_folds_averaged,
-            cv_structure_info=cv_structure_info
+            cv_structure_info=cv_structure_info,
+            fold_parameters=fold_parameters if fold_parameters else None
         )
         
         # Log final model parameters for reference

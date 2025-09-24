@@ -568,7 +568,8 @@ async def get_model_results(run_id: str) -> Dict[str, Any]:
         },
         "diagnostics": results.diagnostics,
         "confidence_intervals": results.confidence_intervals,
-        "cv_structure_info": results.cv_structure_info
+        "cv_structure_info": results.cv_structure_info,
+        "fold_parameters": results.fold_parameters if hasattr(results, 'fold_parameters') else None
     }
 
 

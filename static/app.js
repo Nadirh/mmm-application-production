@@ -766,6 +766,12 @@ class MMMApp {
             console.log('Has fold_details:', !!this.cvStructureInfo.fold_details);
         }
 
+        // Extract fold parameters from results (if available from API)
+        if (results.fold_parameters && results.fold_parameters.length > 0) {
+            this.foldParameters = results.fold_parameters;
+            console.log('Fold parameters from API:', this.foldParameters);
+        }
+
         console.log('*** EQUATION DEBUG: Extracted parameters:', parameters);
         console.log('*** EQUATION DEBUG: Extracted confidence intervals:', confidenceIntervals);
         console.log('Extracted parameters:', parameters);

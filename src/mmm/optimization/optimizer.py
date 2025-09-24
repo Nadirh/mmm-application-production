@@ -201,8 +201,9 @@ class BudgetOptimizer:
 
         # Find true optimal allocation (respecting mROI >= 1)
         # First find global optimum by building up from zero
-        increment = max(10.0, total_budget * 0.01)
-        true_optimal_spend = self._find_global_optimum(channels, increment)
+        # Use a fixed increment of $10 for consistency regardless of input budget
+        fixed_increment = 10.0
+        true_optimal_spend = self._find_global_optimum(channels, fixed_increment)
         true_optimal_budget = sum(true_optimal_spend.values())
         true_optimal_profit = self._calculate_profit(true_optimal_spend, optimization_window_days)
         budget_reduction_pct = ((total_budget - true_optimal_budget) / total_budget * 100) if total_budget > 0 else 0
