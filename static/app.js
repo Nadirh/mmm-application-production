@@ -109,6 +109,10 @@ class MMMApp {
                 this.showStatus(`✅ File uploaded successfully! Upload ID: ${this.uploadId}`, 'success');
                 this.displayDataSummary(result);
                 this.displayChannelInfo(result.channel_info);
+                // Display profit-channel correlations
+                if (result.profit_channel_correlations) {
+                    this.displayProfitCorrelations(result.profit_channel_correlations);
+                }
                 this.showSection('summary-section');
                 this.showSection('config-section');
                 document.getElementById('start-training').disabled = false;
@@ -198,6 +202,59 @@ class MMMApp {
         // Store channel data for later use if needed
         this.channelData = channels;
         return;
+    }
+
+    displayProfitCorrelations(correlations) {
+        // Create correlation display HTML
+        let correlationHtml = `
+            <div class="correlations-section" style="margin-top: 30px;">
+                <h3 style="margin-bottom: 15px;">📊 Profit-Channel Correlations</h3>
+                <div class="correlation-info" style="background: #fff3cd; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                    <strong>⚠️ Pre-Training Analysis:</strong> Low correlations suggest weak linear relationships
+                    between channel spend and profit. This may lead to higher model uncertainty.
+                </div>
+                <div class="correlation-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px;">
+        `;
+
+        // Sort channels by correlation strength
+        const sortedChannels = Object.entries(correlations).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
+
+        for (const [channel, correlation] of sortedChannels) {
+            const absCorr = Math.abs(correlation);
+            let strengthClass = 'weak';
+            let strengthLabel = 'Weak';
+
+            if (absCorr >= 0.7) {
+                strengthClass = 'strong';
+                strengthLabel = 'Strong';
+            } else if (absCorr >= 0.4) {
+                strengthClass = 'moderate';
+                strengthLabel = 'Moderate';
+            }
+
+            correlationHtml += `
+                <div class="correlation-card" style="padding: 12px; border: 1px solid #ddd; border-radius: 8px; background: white;">
+                    <div style="font-weight: bold; margin-bottom: 5px;">${this.formatChannelName(channel)}</div>
+                    <div style="font-size: 24px; color: ${correlation >= 0 ? '#28a745' : '#dc3545'};">
+                        ${correlation >= 0 ? '+' : ''}${(correlation * 100).toFixed(1)}%
+                    </div>
+                    <div style="font-size: 12px; color: #666;">
+                        <span class="correlation-${strengthClass}">${strengthLabel} correlation</span>
+                    </div>
+                </div>
+            `;
+        }
+
+        correlationHtml += `
+                </div>
+            </div>
+        `;
+
+        // Insert after channel info
+        const channelInfoElement = document.getElementById('channel-info');
+        if (channelInfoElement) {
+            channelInfoElement.insertAdjacentHTML('afterend', correlationHtml);
+        }
     }
 
     // Stub function to maintain compatibility
@@ -750,6 +807,47 @@ class MMMApp {
         `;
         
         document.getElementById('results-grid').innerHTML = resultsHtml;
+
+        // Display model constant terms
+        if (parameters) {
+            const constantTermsHtml = `
+                <div class="constant-terms-section" style="margin-top: 30px; padding: 20px; background: #f8f9fa; border-radius: 8px;">
+                    <h3 style="margin-bottom: 15px;">📈 Model Constant Terms</h3>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px;">
+                        <div style="padding: 15px; background: white; border-radius: 6px; border: 1px solid #dee2e6;">
+                            <div style="font-size: 14px; color: #6c757d; margin-bottom: 5px;">Alpha Baseline (Intercept)</div>
+                            <div style="font-size: 24px; font-weight: bold; color: #2c3e50;">
+                                ${parameters.alpha_baseline?.toFixed(2) || 'N/A'}
+                            </div>
+                            <div style="font-size: 12px; color: #6c757d; margin-top: 5px;">
+                                Base profit with zero marketing spend
+                            </div>
+                        </div>
+                        <div style="padding: 15px; background: white; border-radius: 6px; border: 1px solid #dee2e6;">
+                            <div style="font-size: 14px; color: #6c757d; margin-bottom: 5px;">Alpha Trend (Time Coefficient)</div>
+                            <div style="font-size: 24px; font-weight: bold; color: ${parameters.alpha_trend >= 0 ? '#28a745' : '#dc3545'};">
+                                ${parameters.alpha_trend >= 0 ? '+' : ''}${parameters.alpha_trend?.toFixed(4) || 'N/A'}
+                            </div>
+                            <div style="font-size: 12px; color: #6c757d; margin-top: 5px;">
+                                Daily trend in profit (${parameters.alpha_trend >= 0 ? 'growing' : 'declining'})
+                            </div>
+                        </div>
+                        <div style="padding: 15px; background: #e3f2fd; border-radius: 6px; border: 1px solid #1976d2;">
+                            <div style="font-size: 14px; color: #1565c0; margin-bottom: 5px;">Media Attribution %</div>
+                            <div style="font-size: 24px; font-weight: bold; color: #1976d2;">
+                                ${diagnostics?.media_attribution_percentage?.toFixed(1) || 'N/A'}%
+                            </div>
+                            <div style="font-size: 12px; color: #1565c0; margin-top: 5px;">
+                                Profit explained by marketing channels
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // Insert after results grid
+            document.getElementById('results-section').insertAdjacentHTML('beforeend', constantTermsHtml);
+        }
 
         // Remove any existing CV details div first
         const existingCvDetails = document.getElementById('cv-details-section');

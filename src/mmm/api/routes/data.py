@@ -145,7 +145,15 @@ async def upload_data(file: UploadFile = File(...), db: AsyncSession = Depends(g
         # Process data if validation passes
         processor = DataProcessor()
         processed_df, channel_info = processor.process_data(df)
-        
+
+        # Calculate profit-channel correlations
+        profit_channel_correlations = {}
+        if "profit" in processed_df.columns:
+            for channel_name in channel_info.keys():
+                if channel_name in processed_df.columns:
+                    correlation = processed_df["profit"].corr(processed_df[channel_name])
+                    profit_channel_correlations[channel_name] = float(correlation) if not pd.isna(correlation) else 0.0
+
         # Store session data
         upload_sessions[upload_id] = {
             "filename": file.filename,
@@ -155,6 +163,7 @@ async def upload_data(file: UploadFile = File(...), db: AsyncSession = Depends(g
             "validation_errors": validation_errors,
             "channel_info": channel_info,
             "processed_df": processed_df,
+            "profit_channel_correlations": profit_channel_correlations,
             "status": "validated"
         }
         
@@ -235,7 +244,8 @@ async def upload_data(file: UploadFile = File(...), db: AsyncSession = Depends(g
                     "days_active": info.days_active
                 }
                 for name, info in channel_info.items()
-            }
+            },
+            "profit_channel_correlations": profit_channel_correlations
         }
         
     except HTTPException:

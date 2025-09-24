@@ -19,14 +19,20 @@ logger = structlog.get_logger()
 
 class ResponseCurveGenerator:
     """Generates response curves for MMM model results."""
-    
-    def __init__(self, model_parameters: Dict[str, Any]):
+
+    def __init__(self, model_parameters: Dict[str, Any],
+                 confidence_intervals: Optional[Dict[str, Tuple[float, float]]] = None,
+                 cv_mape: Optional[float] = None,
+                 holdout_mape: Optional[float] = None):
         """Initialize with trained model parameters."""
         self.model_parameters = model_parameters
         self.channel_alphas = model_parameters.get("channel_alphas", {})
         self.channel_betas = model_parameters.get("channel_betas", {})
         self.channel_rs = model_parameters.get("channel_rs", {})
         self.alpha_baseline = model_parameters.get("alpha_baseline", 1000.0)
+        self.confidence_intervals = confidence_intervals or {}
+        self.cv_mape = cv_mape
+        self.holdout_mape = holdout_mape
     
     def generate_response_curve(self,
                               channel: str,
@@ -94,7 +100,7 @@ class ResponseCurveGenerator:
             # Calculate 95% confidence intervals if requested
             if include_confidence_intervals:
                 ci_lower, ci_upper = self._calculate_confidence_intervals(
-                    incremental_profit, alpha, beta, r
+                    incremental_profit, alpha, beta, r, channel=channel
                 )
                 confidence_intervals["lower"].append(ci_lower)
                 confidence_intervals["upper"].append(ci_upper)
@@ -175,27 +181,40 @@ class ResponseCurveGenerator:
         return marginal_profit / spend if spend > 0 else 0
 
     def _calculate_confidence_intervals(self, incremental_profit: float,
-                                      alpha: float, beta: float, r: float) -> Tuple[float, float]:
-        """Calculate 95% confidence intervals for the incremental profit prediction."""
-        # Simulate parameter uncertainty (simplified approach)
-        # In practice, you'd use the actual parameter covariance matrix from model fitting
+                                      alpha: float, beta: float, r: float,
+                                      channel: Optional[str] = None) -> Tuple[float, float]:
+        """Calculate 95% confidence intervals using actual model uncertainty."""
+        # Base uncertainty from model MAPE
+        base_uncertainty = 0.15  # Default 15%
 
-        # Assume 10% uncertainty in alpha (main driver of confidence intervals)
-        alpha_std = alpha * 0.1
+        # Adjust based on actual model performance
+        if self.holdout_mape is not None:
+            # Use holdout MAPE as primary uncertainty indicator
+            # High holdout MAPE suggests wider uncertainty
+            base_uncertainty = min(0.5, self.holdout_mape / 100.0)  # Convert to fraction, cap at 50%
+        elif self.cv_mape is not None:
+            # Use CV MAPE if holdout not available
+            base_uncertainty = min(0.4, self.cv_mape / 100.0)  # Convert to fraction, cap at 40%
 
-        # Assume 5% uncertainty in beta and r
-        beta_std = beta * 0.05
-        r_std = r * 0.05
+        # If we have bootstrap CI data for this channel, use it to inform uncertainty
+        if channel and channel in self.confidence_intervals:
+            ci_lower_boot, ci_upper_boot = self.confidence_intervals[channel]
+            # Calculate relative CI width from bootstrap
+            if ci_lower_boot > 0 and ci_upper_boot > 0:
+                mean_contribution = (ci_lower_boot + ci_upper_boot) / 2
+                ci_width_ratio = (ci_upper_boot - ci_lower_boot) / mean_contribution if mean_contribution > 0 else 0.3
+                # Use bootstrap CI width to scale uncertainty
+                base_uncertainty = max(base_uncertainty, ci_width_ratio / 4)  # Scale factor for response curves
+
+        # Additional uncertainty for low alpha values (weak signal)
+        if alpha < 0.1:
+            base_uncertainty *= 1.5  # 50% more uncertainty for very weak channels
+
+        # Calculate profit standard deviation
+        profit_std = incremental_profit * base_uncertainty
 
         # Use normal approximation with 1.96 * std for 95% CI
         z_score = 1.96
-
-        # Calculate uncertainty in incremental profit
-        # Main uncertainty comes from alpha parameter
-        profit_std = incremental_profit * (alpha_std / alpha) if alpha > 0 else incremental_profit * 0.1
-
-        # Add small amount of uncertainty from beta and r parameters
-        profit_std += incremental_profit * 0.02  # Additional 2% uncertainty
 
         ci_lower = incremental_profit - z_score * profit_std
         ci_upper = incremental_profit + z_score * profit_std
@@ -279,10 +298,15 @@ class ResponseCurveGenerator:
 
 class CachedResponseCurveGenerator:
     """Response curve generator with caching support."""
-    
-    def __init__(self, run_id: str, model_parameters: Dict[str, Any]):
+
+    def __init__(self, run_id: str, model_parameters: Dict[str, Any],
+                 confidence_intervals: Optional[Dict[str, Tuple[float, float]]] = None,
+                 cv_mape: Optional[float] = None,
+                 holdout_mape: Optional[float] = None):
         self.run_id = run_id
-        self.generator = ResponseCurveGenerator(model_parameters)
+        self.generator = ResponseCurveGenerator(
+            model_parameters, confidence_intervals, cv_mape, holdout_mape
+        )
     
     async def get_response_curve(self, channel: str, **kwargs) -> Dict[str, Any]:
         """Get response curve with caching."""
@@ -340,10 +364,15 @@ class CachedResponseCurveGenerator:
         return deleted
 
 
-def create_response_curve_generator(run_id: str, 
-                                  model_parameters: Dict[str, Any]) -> CachedResponseCurveGenerator:
+def create_response_curve_generator(run_id: str,
+                                  model_parameters: Dict[str, Any],
+                                  confidence_intervals: Optional[Dict[str, Tuple[float, float]]] = None,
+                                  cv_mape: Optional[float] = None,
+                                  holdout_mape: Optional[float] = None) -> CachedResponseCurveGenerator:
     """Factory function to create a cached response curve generator."""
-    return CachedResponseCurveGenerator(run_id, model_parameters)
+    return CachedResponseCurveGenerator(
+        run_id, model_parameters, confidence_intervals, cv_mape, holdout_mape
+    )
 
 
 # Utility functions for response curve analysis

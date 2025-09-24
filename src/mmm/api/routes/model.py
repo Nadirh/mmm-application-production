@@ -651,8 +651,20 @@ async def get_response_curve(
     if channel not in model_parameters["channel_alphas"]:
         raise HTTPException(status_code=404, detail="Channel not found in model")
     
-    # Create cached response curve generator
-    curve_generator = create_response_curve_generator(run_id, model_parameters)
+    # Create cached response curve generator with uncertainty metrics
+    if cached_results:
+        confidence_intervals = cached_results.get('confidence_intervals')
+        cv_mape = cached_results.get('performance', {}).get('cv_mape')
+        holdout_mape = cached_results.get('diagnostics', {}).get('holdout_validation', {}).get('holdout_mape')
+    else:
+        results = run["results"]
+        confidence_intervals = results.confidence_intervals if hasattr(results, 'confidence_intervals') else None
+        cv_mape = results.cv_mape if hasattr(results, 'cv_mape') else None
+        holdout_mape = results.diagnostics.get('holdout_validation', {}).get('holdout_mape') if hasattr(results, 'diagnostics') else None
+
+    curve_generator = create_response_curve_generator(
+        run_id, model_parameters, confidence_intervals, cv_mape, holdout_mape
+    )
     
     # Determine max spend if not provided
     if max_spend is None and current_spend:
@@ -724,8 +736,20 @@ async def get_all_response_curves(
             "channel_rs": results.parameters.channel_rs
         }
     
-    # Create cached response curve generator
-    curve_generator = create_response_curve_generator(run_id, model_parameters)
+    # Create cached response curve generator with uncertainty metrics
+    if cached_results:
+        confidence_intervals = cached_results.get('confidence_intervals')
+        cv_mape = cached_results.get('performance', {}).get('cv_mape')
+        holdout_mape = cached_results.get('diagnostics', {}).get('holdout_validation', {}).get('holdout_mape')
+    else:
+        results = run["results"]
+        confidence_intervals = results.confidence_intervals if hasattr(results, 'confidence_intervals') else None
+        cv_mape = results.cv_mape if hasattr(results, 'cv_mape') else None
+        holdout_mape = results.diagnostics.get('holdout_validation', {}).get('holdout_mape') if hasattr(results, 'diagnostics') else None
+
+    curve_generator = create_response_curve_generator(
+        run_id, model_parameters, confidence_intervals, cv_mape, holdout_mape
+    )
     
     # Calculate 28-day average daily spend from uploaded data
     upload_session = upload_sessions.get(run["upload_id"])
@@ -833,8 +857,20 @@ async def get_response_curve_analysis(run_id: str) -> Dict[str, Any]:
             "channel_rs": results.parameters.channel_rs
         }
     
-    # Create cached response curve generator
-    curve_generator = create_response_curve_generator(run_id, model_parameters)
+    # Create cached response curve generator with uncertainty metrics
+    if cached_results:
+        confidence_intervals = cached_results.get('confidence_intervals')
+        cv_mape = cached_results.get('performance', {}).get('cv_mape')
+        holdout_mape = cached_results.get('diagnostics', {}).get('holdout_validation', {}).get('holdout_mape')
+    else:
+        results = run["results"]
+        confidence_intervals = results.confidence_intervals if hasattr(results, 'confidence_intervals') else None
+        cv_mape = results.cv_mape if hasattr(results, 'cv_mape') else None
+        holdout_mape = results.diagnostics.get('holdout_validation', {}).get('holdout_mape') if hasattr(results, 'diagnostics') else None
+
+    curve_generator = create_response_curve_generator(
+        run_id, model_parameters, confidence_intervals, cv_mape, holdout_mape
+    )
     
     # Get all curves
     curves = await curve_generator.get_all_response_curves()
