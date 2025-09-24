@@ -262,9 +262,10 @@ class BudgetOptimizer:
                                    constraints: List[Constraint],
                                    days: int) -> Dict[str, float]:
         """Optimize using greedy marginal ROI allocation."""
-        # Initialize with minimum spend for each channel
-        min_spend_per_channel = 1000.0  # Minimum $1000 per channel
-        optimal_spend = {ch: min_spend_per_channel for ch in channels}
+        # Initialize with proportional allocation to avoid artificial advantages
+        # Start with equal distribution as a neutral starting point
+        initial_per_channel = total_budget / len(channels) * 0.2  # Start with 20% of equal share
+        optimal_spend = {ch: initial_per_channel for ch in channels}
         allocated_budget = sum(optimal_spend.values())
 
         # Apply floor constraints
@@ -283,13 +284,14 @@ class BudgetOptimizer:
             return optimal_spend
 
         # Greedy allocation based on marginal ROI
-        # Use larger increments for large budgets to avoid excessive iterations
-        if total_budget > 1000000:
-            increment = total_budget / 1000  # 0.1% of budget per increment
-        else:
-            increment = 1000.0  # $1000 increments for smaller budgets
+        # Use adaptive increment size based on remaining budget
+        remaining_budget = total_budget - allocated_budget
+        if remaining_budget <= 0:
+            return optimal_spend
 
-        max_iterations = min(10000, int((total_budget - allocated_budget) / increment) + 100)
+        # Use smaller increments for better precision
+        increment = max(100.0, remaining_budget / 500)  # At least $100, at most 0.2% of remaining
+        max_iterations = min(10000, int(remaining_budget / increment) + 100)
 
         import structlog
         logger = structlog.get_logger()
