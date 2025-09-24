@@ -819,11 +819,24 @@ class MMMModel:
             y_pred = X_design @ params
             return np.sum((y - y_pred) ** 2)
         
-        # Initial guess
-        initial_params = np.ones(X_design.shape[1]) * 0.1
+        # Initial guess - use OLS estimates as starting point
+        try:
+            # Try to get reasonable initial estimates using least squares
+            initial_params = np.linalg.lstsq(X_design, y, rcond=None)[0]
+            # Ensure non-negative where required
+            initial_params[0] = max(0, initial_params[0])  # baseline >= 0
+            # trend can be negative, so leave it as is
+            for i in range(2, len(initial_params)):
+                initial_params[i] = max(0, initial_params[i])  # channel alphas >= 0
+        except:
+            # Fallback to simple initialization if OLS fails
+            initial_params = np.ones(X_design.shape[1]) * 0.1
+            initial_params[0] = np.mean(y) * 0.5  # Better baseline guess
         
-        # Constraints: alpha_baseline >= 0, alpha_trend >= 0, channel_alphas >= 0
-        bounds = [(0, None)] * X_design.shape[1]
+        # Constraints: alpha_baseline >= 0, alpha_trend can be negative, channel_alphas >= 0
+        bounds = [(0, None)]  # alpha_baseline >= 0
+        bounds.append((None, None))  # alpha_trend can be positive or negative
+        bounds.extend([(0, None)] * len(spend_columns))  # channel_alphas >= 0
         
         # Optimize
         result = minimize(objective, initial_params, bounds=bounds, method='L-BFGS-B')
