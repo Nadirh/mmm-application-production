@@ -323,6 +323,35 @@ class MMMModel:
             cv_structure_info=cv_structure_info
         )
         
+        # Log final model parameters for reference
+        logger.info("=" * 80)
+        logger.info("FINAL MODEL PARAMETERS (Used for predictions and optimization)")
+        logger.info("=" * 80)
+        logger.info(f"Alpha Baseline: {final_params.alpha_baseline:.4f}")
+        logger.info(f"Alpha Trend: {final_params.alpha_trend:.6f}")
+        logger.info("-" * 80)
+
+        logger.info("Channel Parameters:")
+        for channel in spend_columns:
+            alpha = final_params.channel_alphas.get(channel, 0)
+            beta = final_params.channel_betas.get(channel, 0)
+            r = final_params.channel_rs.get(channel, 0)
+            logger.info(f"  {channel}:")
+            logger.info(f"    Alpha: {alpha:.4f}")
+            logger.info(f"    Beta: {beta:.4f}")
+            logger.info(f"    R (adstock): {r:.4f}")
+
+        logger.info("=" * 80)
+        logger.info("DIAGNOSTICS:")
+        logger.info(f"  R-squared: {r_squared:.4f}")
+        logger.info(f"  MAPE (in-sample): {mape:.2f}%")
+        logger.info(f"  CV MAPE (average): {cv_mape:.2f}%")
+        if holdout_mape is not None:
+            logger.info(f"  Holdout MAPE: {holdout_mape:.2f}%")
+        logger.info(f"  Media Attribution: {diagnostics.get('media_attribution_percentage', 0):.1f}%")
+        logger.info(f"  Baseline Attribution: {diagnostics.get('baseline_attribution_percentage', 0):.1f}%")
+        logger.info("=" * 80)
+
         self.is_fitted = True
         return self.results
     
