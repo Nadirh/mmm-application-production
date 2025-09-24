@@ -151,13 +151,33 @@ class BudgetOptimizer:
         logger.info("OPTIMIZATION RESULTS SUMMARY")
         logger.info("-" * 80)
         logger.info(f"Budget-Constrained Allocation (spending full ${total_budget:,.0f}):")
-        logger.info(f"  Profit: ${optimal_profit:,.0f}")
-        logger.info(f"  Uplift vs current: ${profit_uplift:,.0f}")
+        logger.info(f"  Gross Profit: ${optimal_profit:,.0f}")
+        logger.info(f"  Media Spend: ${total_budget:,.0f}")
+        logger.info(f"  Net Profit/Loss: ${optimal_profit - total_budget:,.0f}")
+        logger.info(f"  ROI: {optimal_profit / total_budget:.2f}")
+
+        # Warning if losing money
+        if optimal_profit < total_budget:
+            logger.warning(f"⚠️  WARNING: Spending ${total_budget:,.0f} generates only ${optimal_profit:,.0f} in profit!")
+            logger.warning(f"⚠️  This is a NET LOSS of ${total_budget - optimal_profit:,.0f}")
+
         logger.info("-" * 80)
         logger.info(f"True Optimal Allocation (mROI >= 1 constraint):")
-        logger.info(f"  Budget: ${true_optimal_budget:,.0f} ({budget_reduction_pct:.1f}% reduction)")
-        logger.info(f"  Profit: ${true_optimal_profit:,.0f}")
-        logger.info(f"  Additional profit from reduced spending: ${true_optimal_profit - optimal_profit:,.0f}")
+        logger.info(f"  Recommended Budget: ${true_optimal_budget:,.0f} ({budget_reduction_pct:.1f}% reduction)")
+        logger.info(f"  Gross Profit: ${true_optimal_profit:,.0f}")
+        logger.info(f"  Net Profit: ${true_optimal_profit - true_optimal_budget:,.0f}")
+        logger.info(f"  ROI: {true_optimal_profit / true_optimal_budget:.2f}" if true_optimal_budget > 0 else "  ROI: N/A")
+
+        # Clear recommendation
+        if budget_reduction_pct > 10:
+            savings = total_budget - true_optimal_budget
+            logger.warning("=" * 80)
+            logger.warning("💡 STRONG RECOMMENDATION:")
+            logger.warning(f"   Reduce budget from ${total_budget:,.0f} to ${true_optimal_budget:,.0f}")
+            logger.warning(f"   This would save ${savings:,.0f} in spend")
+            logger.warning(f"   Net benefit: ${(true_optimal_profit - true_optimal_budget) - (optimal_profit - total_budget):,.0f}")
+            logger.warning("=" * 80)
+
         logger.info("=" * 80)
 
         return OptimizationResult(
@@ -334,6 +354,11 @@ class BudgetOptimizer:
             # Calculate marginal ROI for each channel at their CURRENT allocation
             marginal_rois = {}
             for channel in channels:
+                # Skip channels with alpha = 0 (they don't contribute to profit)
+                if channel in self.model_params.channel_alphas:
+                    if self.model_params.channel_alphas[channel] <= 0:
+                        continue
+
                 # Check cap constraints
                 is_capped = False
                 for constraint in constraints:
