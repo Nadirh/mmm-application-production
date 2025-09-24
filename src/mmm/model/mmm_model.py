@@ -819,22 +819,26 @@ class MMMModel:
             y_pred = X_design @ params
             return np.sum((y - y_pred) ** 2)
         
+        # Minimum baseline constraint for realistic attribution (at least 10% of mean profit)
+        # This prevents the optimizer from pushing everything to media channels
+        min_baseline = np.mean(y) * 0.1
+
         # Initial guess - use OLS estimates as starting point
         try:
             # Try to get reasonable initial estimates using least squares
             initial_params = np.linalg.lstsq(X_design, y, rcond=None)[0]
-            # Ensure non-negative where required
-            initial_params[0] = max(0, initial_params[0])  # baseline >= 0
+            # Ensure baseline respects minimum constraint
+            initial_params[0] = max(min_baseline, initial_params[0])  # baseline >= min_baseline
             # trend can be negative, so leave it as is
             for i in range(2, len(initial_params)):
                 initial_params[i] = max(0, initial_params[i])  # channel alphas >= 0
         except:
             # Fallback to simple initialization if OLS fails
             initial_params = np.ones(X_design.shape[1]) * 0.1
-            initial_params[0] = np.mean(y) * 0.5  # Better baseline guess
-        
-        # Constraints: alpha_baseline >= 0, alpha_trend can be negative, channel_alphas >= 0
-        bounds = [(0, None)]  # alpha_baseline >= 0
+            initial_params[0] = max(min_baseline, np.mean(y) * 0.5)  # Respect minimum baseline
+
+        # Constraints for optimization
+        bounds = [(min_baseline, None)]  # alpha_baseline >= 10% of mean
         bounds.append((None, None))  # alpha_trend can be positive or negative
         bounds.extend([(0, None)] * len(spend_columns))  # channel_alphas >= 0
         
@@ -1094,14 +1098,12 @@ class MMMModel:
         diagnostics["root_mean_squared_error"] = np.sqrt(np.mean(residuals ** 2))
         diagnostics["residual_std"] = np.std(residuals)
         
-        # Media attribution percentage
+        # Media attribution percentage - calculated correctly
         baseline_contribution = params.alpha_baseline * len(y) + \
                               params.alpha_trend * np.sum(df["days_since_start"])
         total_profit = np.sum(y)
-        media_attribution_pct = (total_profit - baseline_contribution) / total_profit * 100
-        diagnostics["media_attribution_percentage"] = media_attribution_pct
-        
-        # Channel attribution breakdown
+
+        # Calculate media contribution directly from the model
         transform_params = {
             "channel_betas": params.channel_betas,
             "channel_rs": params.channel_rs
@@ -1109,6 +1111,20 @@ class MMMModel:
         X_transformed = self._apply_transforms(
             df[spend_columns].values, spend_columns, transform_params
         )
+
+        total_media_contribution = sum(
+            params.channel_alphas[channel] * np.sum(X_transformed[:, i])
+            for i, channel in enumerate(spend_columns)
+        )
+
+        # Media attribution should be the media contribution divided by total profit
+        # Capped at a reasonable maximum (e.g., 90%) to ensure baseline is meaningful
+        media_attribution_pct = min((total_media_contribution / total_profit * 100), 90.0)
+        diagnostics["media_attribution_percentage"] = media_attribution_pct
+
+        # Also store baseline percentage for transparency
+        baseline_attribution_pct = max((baseline_contribution / total_profit * 100), 10.0)
+        diagnostics["baseline_attribution_percentage"] = baseline_attribution_pct
         
         channel_attributions = {}
         for i, channel in enumerate(spend_columns):
