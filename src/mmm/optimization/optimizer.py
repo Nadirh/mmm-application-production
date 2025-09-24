@@ -261,12 +261,10 @@ class BudgetOptimizer:
                                    total_budget: float,
                                    constraints: List[Constraint],
                                    days: int) -> Dict[str, float]:
-        """Optimize using greedy marginal ROI allocation."""
-        # Initialize with proportional allocation to avoid artificial advantages
-        # Start with equal distribution as a neutral starting point
-        initial_per_channel = total_budget / len(channels) * 0.2  # Start with 20% of equal share
-        optimal_spend = {ch: initial_per_channel for ch in channels}
-        allocated_budget = sum(optimal_spend.values())
+        """Optimize using greedy marginal ROI allocation starting from zero."""
+        # Start all channels at zero allocation
+        optimal_spend = {ch: 0.0 for ch in channels}
+        allocated_budget = 0.0
 
         # Apply floor constraints
         for constraint in constraints:
@@ -284,24 +282,24 @@ class BudgetOptimizer:
             return optimal_spend
 
         # Greedy allocation based on marginal ROI
-        # Use adaptive increment size based on remaining budget
         remaining_budget = total_budget - allocated_budget
         if remaining_budget <= 0:
             return optimal_spend
 
-        # Use smaller increments for better precision
-        increment = max(100.0, remaining_budget / 500)  # At least $100, at most 0.2% of remaining
-        max_iterations = min(10000, int(remaining_budget / increment) + 100)
+        # Use 1% of total budget as increment size (or $100 minimum for small budgets)
+        increment = max(100.0, total_budget * 0.01)
+        max_iterations = int(remaining_budget / increment) + 1
 
         import structlog
         logger = structlog.get_logger()
-        logger.info(f"Starting marginal ROI optimization: budget={total_budget}, increment={increment}, max_iterations={max_iterations}")
+        logger.info(f"Profit Maximizer: Starting from ZERO allocation")
+        logger.info(f"Budget: ${total_budget:,.0f}, Increment: ${increment:,.0f} ({increment/total_budget*100:.1f}%), Max iterations: {max_iterations}")
 
         for iteration in range(max_iterations):
-            if allocated_budget >= total_budget - increment:
+            if allocated_budget >= total_budget - increment * 0.5:  # Stop when we can't allocate a full increment
                 break
 
-            # Calculate marginal ROI for each channel
+            # Calculate marginal ROI for each channel at their CURRENT allocation
             marginal_rois = {}
             for channel in channels:
                 # Check cap constraints
@@ -316,24 +314,38 @@ class BudgetOptimizer:
                         break
 
                 if not is_capped:
+                    # Calculate mROI based on CURRENT spend for this channel
                     marginal_rois[channel] = self._calculate_marginal_roi(
                         channel, optimal_spend[channel], increment
                     )
 
             if not marginal_rois:
+                logger.info("All channels are capped - stopping allocation")
                 break  # All channels are capped
 
             # Allocate to channel with highest marginal ROI
             best_channel = max(marginal_rois, key=marginal_rois.get)
-            if marginal_rois[best_channel] <= 0:
+            best_roi = marginal_rois[best_channel]
+
+            if best_roi <= 0:
+                logger.info(f"No positive marginal ROI remaining (best was {best_roi:.4f} for {best_channel})")
                 break  # No positive marginal ROI remaining
 
-            # Log every 100 iterations for large budgets
-            if iteration % 100 == 0:
-                logger.debug(f"Iteration {iteration}: marginal_rois={marginal_rois}, best={best_channel}, allocated={allocated_budget}")
+            # Log progress at key points
+            if iteration == 0 or iteration % 10 == 0 or iteration == max_iterations - 1:
+                logger.info(f"Iteration {iteration}: Allocating ${increment:,.0f} to {best_channel} (mROI={best_roi:.4f})")
+                logger.info(f"  Current allocation: {', '.join([f'{ch}: ${optimal_spend[ch]:,.0f}' for ch in channels])}")
 
             optimal_spend[best_channel] += increment
             allocated_budget += increment
+
+        # Final summary
+        logger.info(f"Optimization complete after {iteration + 1} iterations")
+        logger.info(f"Final allocation (${allocated_budget:,.0f} of ${total_budget:,.0f} budget):")
+        for channel in channels:
+            pct = (optimal_spend[channel] / total_budget * 100) if total_budget > 0 else 0
+            final_roi = self._calculate_marginal_roi(channel, optimal_spend[channel], increment)
+            logger.info(f"  {channel}: ${optimal_spend[channel]:,.0f} ({pct:.1f}%) - Final mROI: {final_roi:.4f}")
 
         return optimal_spend
 
