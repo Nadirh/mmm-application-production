@@ -97,7 +97,19 @@ async def run_optimization(request: OptimizationRequest) -> Dict[str, Any]:
             profit_uplift=result.profit_uplift,
             optimal_profit=result.optimal_profit
         )
-        
+
+        # DEBUG: Log what we're returning
+        logger.info("=" * 80)
+        logger.info("API RETURNING:")
+        logger.info(f"  Optimal profit: ${result.optimal_profit:,.2f}")
+        logger.info(f"  Current profit: ${result.current_profit:,.2f}")
+        logger.info(f"  Profit uplift: ${result.profit_uplift:,.2f}")
+        logger.info("  Optimal spend allocation:")
+        for channel, spend in result.optimal_spend.items():
+            if spend > 0:
+                logger.info(f"    {channel}: ${spend:,.0f}")
+        logger.info("=" * 80)
+
         return {
             "run_id": request.run_id,
             "optimization_results": {
@@ -107,7 +119,12 @@ async def run_optimization(request: OptimizationRequest) -> Dict[str, Any]:
                 "profit_uplift": result.profit_uplift,
                 "profit_uplift_pct": (result.profit_uplift / result.current_profit * 100) if result.current_profit > 0 else 0,
                 "shadow_prices": result.shadow_prices,
-                "constraints_binding": result.constraints_binding
+                "constraints_binding": result.constraints_binding,
+                # Media-specific profits (what actually matters for optimization)
+                "media_optimal_profit": result.media_optimal_profit,
+                "media_current_profit": result.media_current_profit,
+                "media_profit_uplift": result.media_profit_uplift,
+                "media_roi": result.media_optimal_profit / request.total_budget if request.total_budget > 0 else 0
             },
             "response_curves": response_curves_data,
             "scenario_analysis": result.scenario_analysis

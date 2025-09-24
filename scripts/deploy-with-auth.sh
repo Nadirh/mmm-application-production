@@ -7,7 +7,7 @@ echo "=== MMM Application Deployment with Authentication ==="
 echo "======================================================="
 
 # Configuration
-VERSION="v1.9.81"
+VERSION="${1:-v1.9.81}"  # Use first argument or default to v1.9.81
 ECR_REPO="727529935876.dkr.ecr.us-east-2.amazonaws.com/mmm-application"
 AWS_REGION="us-east-2"
 

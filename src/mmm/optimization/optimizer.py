@@ -27,8 +27,8 @@ class Constraint:
 @dataclass
 class OptimizationResult:
     optimal_spend: Dict[str, float]  # Budget-constrained allocation
-    optimal_profit: float
-    current_profit: float
+    optimal_profit: float  # Total profit (includes baseline)
+    current_profit: float  # Total profit (includes baseline)
     profit_uplift: float
     shadow_prices: Dict[str, float]
     constraints_binding: List[str]
@@ -39,6 +39,10 @@ class OptimizationResult:
     true_optimal_profit: float = None
     true_optimal_budget: float = None  # Total spend for true optimal
     budget_reduction_pct: float = None  # How much less to spend for true optimal
+    # Media-specific profit fields (excluding baseline)
+    media_optimal_profit: float = None  # Media profit for optimal allocation
+    media_current_profit: float = None  # Media profit for current allocation
+    media_profit_uplift: float = None  # Media profit increase
 
 
 @dataclass
@@ -79,6 +83,32 @@ class BudgetOptimizer:
         Returns:
             OptimizationResult with optimal allocation and analysis
         """
+        import structlog
+        logger = structlog.get_logger()
+
+        # DEBUG: Log all model parameters
+        logger.info("=" * 80)
+        logger.info("OPTIMIZER DEBUG: Starting optimization")
+        logger.info(f"Total budget: ${total_budget:,.0f}")
+        logger.info(f"Optimization window: {optimization_window_days} days")
+        logger.info(f"Use marginal ROI: {use_marginal_roi}")
+
+        logger.info("-" * 40)
+        logger.info("Model parameters:")
+        logger.info(f"  alpha_baseline: {self.model_params.alpha_baseline}")
+        logger.info(f"  alpha_trend: {self.model_params.alpha_trend}")
+
+        logger.info("Channel parameters:")
+        for channel in current_spend.keys():
+            alpha = self.model_params.channel_alphas.get(channel, 0)
+            beta = self.model_params.channel_betas.get(channel, 0)
+            r = self.model_params.channel_rs.get(channel, 0)
+            logger.info(f"  {channel}:")
+            logger.info(f"    alpha: {alpha:.4f}")
+            logger.info(f"    beta: {beta:.4f}")
+            logger.info(f"    r: {r:.4f}")
+        logger.info("=" * 80)
+
         constraints = constraints or []
         channels = list(current_spend.keys())
 
@@ -118,6 +148,38 @@ class BudgetOptimizer:
         optimal_profit = self._calculate_profit(optimal_spend, optimization_window_days)
         current_profit = self._calculate_profit(current_spend, optimization_window_days)
         profit_uplift = optimal_profit - current_profit
+
+        # DEBUG: Log profit calculation details
+        logger.info("-" * 80)
+        logger.info("OPTIMIZER DEBUG: Profit calculation results")
+        logger.info(f"Optimal profit: ${optimal_profit:,.2f}")
+        logger.info(f"Current profit: ${current_profit:,.2f}")
+        logger.info(f"Profit uplift: ${profit_uplift:,.2f}")
+
+        # Manual verification
+        logger.info("Manual profit verification:")
+        baseline = self.model_params.alpha_baseline * optimization_window_days
+        logger.info(f"  Baseline profit: ${baseline:,.2f}")
+
+        media_profit = 0
+        for channel, spend in optimal_spend.items():
+            if spend > 0 and channel in self.model_params.channel_alphas:
+                alpha = self.model_params.channel_alphas[channel]
+                if alpha > 0:
+                    beta = self.model_params.channel_betas[channel]
+                    r = self.model_params.channel_rs[channel]
+                    adstock_mult = 1 / (1 - r) if r < 0.99 else 10.0
+                    adstocked = spend * adstock_mult
+                    ch_profit = alpha * np.power(adstocked, beta)
+                    media_profit += ch_profit
+                    logger.info(f"  {channel}: ${spend:,.0f} -> ${ch_profit:,.2f}")
+
+        logger.info(f"  Total media profit: ${media_profit:,.2f}")
+        logger.info(f"  Total (baseline + media): ${baseline + media_profit:,.2f}")
+
+        if abs((baseline + media_profit) - optimal_profit) > 100:
+            logger.error(f"⚠️ DISCREPANCY: Manual calc ${baseline + media_profit:,.2f} != Optimal ${optimal_profit:,.2f}")
+        logger.info("-" * 80)
         
         # Calculate shadow prices
         shadow_prices = self._calculate_shadow_prices(
@@ -195,6 +257,9 @@ class BudgetOptimizer:
 
         logger.info("=" * 80)
 
+        # Calculate media profit for current spend
+        current_media_profit = current_profit - (baseline_profit if current_profit > 0 else 0)
+
         return OptimizationResult(
             optimal_spend=optimal_spend,
             optimal_profit=optimal_profit,
@@ -207,7 +272,10 @@ class BudgetOptimizer:
             true_optimal_spend=true_optimal_spend,
             true_optimal_profit=true_optimal_profit,
             true_optimal_budget=true_optimal_budget,
-            budget_reduction_pct=budget_reduction_pct
+            budget_reduction_pct=budget_reduction_pct,
+            media_optimal_profit=media_profit,
+            media_current_profit=current_media_profit,
+            media_profit_uplift=media_profit - current_media_profit
         )
     
     def _setup_constraints(self,
