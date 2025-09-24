@@ -825,7 +825,7 @@ class MMMApp {
                         <div style="padding: 15px; background: white; border-radius: 6px; border: 1px solid #dee2e6;">
                             <div style="font-size: 14px; color: #6c757d; margin-bottom: 5px;">Alpha Baseline (Intercept)</div>
                             <div style="font-size: 24px; font-weight: bold; color: #2c3e50;">
-                                ${parameters.alpha_baseline?.toFixed(2) || 'N/A'}
+                                $${parameters.alpha_baseline?.toFixed(2) || 'N/A'}
                             </div>
                             <div style="font-size: 12px; color: #6c757d; margin-top: 5px;">
                                 Base profit with zero marketing spend
@@ -834,10 +834,10 @@ class MMMApp {
                         <div style="padding: 15px; background: white; border-radius: 6px; border: 1px solid #dee2e6;">
                             <div style="font-size: 14px; color: #6c757d; margin-bottom: 5px;">Alpha Trend (Time Coefficient)</div>
                             <div style="font-size: 24px; font-weight: bold; color: ${parameters.alpha_trend >= 0 ? '#28a745' : '#dc3545'};">
-                                ${parameters.alpha_trend >= 0 ? '+' : ''}${parameters.alpha_trend?.toFixed(4) || 'N/A'}
+                                ${parameters.alpha_trend >= 0 ? '+' : '-'}$${Math.abs(parameters.alpha_trend)?.toFixed(2) || 'N/A'}/day
                             </div>
                             <div style="font-size: 12px; color: #6c757d; margin-top: 5px;">
-                                Daily trend in profit (${parameters.alpha_trend >= 0 ? 'growing' : 'declining'})
+                                Daily change in baseline profit (${parameters.alpha_trend >= 0 ? 'growing' : 'declining'})
                             </div>
                         </div>
                         <div style="padding: 15px; background: #e3f2fd; border-radius: 6px; border: 1px solid #1976d2;">

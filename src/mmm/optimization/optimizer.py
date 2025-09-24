@@ -59,50 +59,58 @@ class BudgetOptimizer:
                 current_spend: Dict[str, float],
                 total_budget: float,
                 constraints: List[Constraint] = None,
-                optimization_window_days: int = 365) -> OptimizationResult:
+                optimization_window_days: int = 365,
+                use_marginal_roi: bool = True) -> OptimizationResult:
         """
         Optimizes budget allocation to maximize profit.
-        
+
         Args:
             current_spend: Current spend levels by channel
             total_budget: Total budget constraint
             constraints: List of business constraints
             optimization_window_days: Time horizon for optimization
-            
+            use_marginal_roi: Use marginal ROI-based allocation (more realistic)
+
         Returns:
             OptimizationResult with optimal allocation and analysis
         """
         constraints = constraints or []
         channels = list(current_spend.keys())
-        
-        # Set up optimization problem
-        bounds, constraint_funcs = self._setup_constraints(
-            channels, current_spend, total_budget, constraints
-        )
-        
-        # Objective function (negative profit for minimization)
-        def objective(spend_array):
-            spend_dict = dict(zip(channels, spend_array))
-            return -self._calculate_profit(spend_dict, optimization_window_days)
-        
-        # Initial guess (current spend)
-        x0 = np.array([current_spend[ch] for ch in channels])
-        
-        # Optimize
-        result = minimize(
-            objective,
-            x0,
-            method='L-BFGS-B',
-            bounds=bounds,
-            constraints=constraint_funcs
-        )
-        
-        if not result.success:
-            raise ValueError(f"Optimization failed: {result.message}")
-        
-        # Extract results
-        optimal_spend = dict(zip(channels, result.x))
-        optimal_profit = -result.fun
+
+        # Use marginal ROI-based greedy allocation for better results
+        if use_marginal_roi:
+            optimal_spend = self._optimize_with_marginal_roi(
+                channels, total_budget, constraints, optimization_window_days
+            )
+            result_success = True
+        else:
+            # Original scipy optimization (kept for compatibility)
+            bounds, constraint_funcs = self._setup_constraints(
+                channels, current_spend, total_budget, constraints
+            )
+
+            def objective(spend_array):
+                spend_dict = dict(zip(channels, spend_array))
+                return -self._calculate_profit(spend_dict, optimization_window_days)
+
+            x0 = np.array([current_spend[ch] for ch in channels])
+
+            result = minimize(
+                objective,
+                x0,
+                method='L-BFGS-B',
+                bounds=bounds,
+                constraints=constraint_funcs
+            )
+
+            optimal_spend = dict(zip(channels, result.x))
+            result_success = result.success
+
+        if not result_success:
+            raise ValueError(f"Optimization failed")
+
+        # Extract results (optimal_spend already set above)
+        optimal_profit = self._calculate_profit(optimal_spend, optimization_window_days)
         current_profit = self._calculate_profit(current_spend, optimization_window_days)
         profit_uplift = optimal_profit - current_profit
         
@@ -223,7 +231,94 @@ class BudgetOptimizer:
             total_profit += channel_profit
         
         return total_profit
-    
+
+    def _calculate_marginal_roi(self, channel: str, current_spend: float, increment: float = 100.0) -> float:
+        """Calculate marginal ROI for a channel at given spend level."""
+        if channel not in self.model_params.channel_alphas:
+            return 0.0
+
+        alpha = self.model_params.channel_alphas[channel]
+        beta = self.model_params.channel_betas[channel]
+        r = self.model_params.channel_rs[channel]
+
+        # Apply adstock
+        adstock_multiplier = 1 / (1 - r) if r < 0.99 else 10.0
+        adstocked_current = current_spend * adstock_multiplier
+        adstocked_new = (current_spend + increment) * adstock_multiplier
+
+        # Calculate marginal return
+        current_contribution = alpha * np.power(adstocked_current, beta)
+        new_contribution = alpha * np.power(adstocked_new, beta)
+        marginal_return = new_contribution - current_contribution
+
+        return marginal_return / increment  # ROI per dollar
+
+    def _optimize_with_marginal_roi(self,
+                                   channels: List[str],
+                                   total_budget: float,
+                                   constraints: List[Constraint],
+                                   days: int) -> Dict[str, float]:
+        """Optimize using greedy marginal ROI allocation."""
+        # Initialize with minimum spend for each channel
+        min_spend_per_channel = 1000.0  # Minimum $1000 per channel
+        optimal_spend = {ch: min_spend_per_channel for ch in channels}
+        allocated_budget = sum(optimal_spend.values())
+
+        # Apply floor constraints
+        for constraint in constraints:
+            if constraint.type == ConstraintType.FLOOR and constraint.channel in optimal_spend:
+                optimal_spend[constraint.channel] = max(optimal_spend[constraint.channel], constraint.value)
+            elif constraint.type == ConstraintType.LOCK and constraint.channel in optimal_spend:
+                optimal_spend[constraint.channel] = constraint.value
+
+        allocated_budget = sum(optimal_spend.values())
+
+        if allocated_budget > total_budget:
+            # Scale down proportionally if minimum allocation exceeds budget
+            scale = total_budget / allocated_budget
+            optimal_spend = {ch: spend * scale for ch, spend in optimal_spend.items()}
+            return optimal_spend
+
+        # Greedy allocation based on marginal ROI
+        increment = 1000.0  # Allocate in $1000 increments
+        max_iterations = int((total_budget - allocated_budget) / increment) + 100
+
+        for _ in range(max_iterations):
+            if allocated_budget >= total_budget - increment:
+                break
+
+            # Calculate marginal ROI for each channel
+            marginal_rois = {}
+            for channel in channels:
+                # Check cap constraints
+                is_capped = False
+                for constraint in constraints:
+                    if constraint.type == ConstraintType.CAP and constraint.channel == channel:
+                        if optimal_spend[channel] >= constraint.value:
+                            is_capped = True
+                            break
+                    elif constraint.type == ConstraintType.LOCK and constraint.channel == channel:
+                        is_capped = True  # Locked channels can't change
+                        break
+
+                if not is_capped:
+                    marginal_rois[channel] = self._calculate_marginal_roi(
+                        channel, optimal_spend[channel], increment
+                    )
+
+            if not marginal_rois:
+                break  # All channels are capped
+
+            # Allocate to channel with highest marginal ROI
+            best_channel = max(marginal_rois, key=marginal_rois.get)
+            if marginal_rois[best_channel] <= 0:
+                break  # No positive marginal ROI remaining
+
+            optimal_spend[best_channel] += increment
+            allocated_budget += increment
+
+        return optimal_spend
+
     def _calculate_shadow_prices(self,
                                optimal_spend: Dict[str, float],
                                total_budget: float,
