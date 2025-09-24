@@ -2420,7 +2420,7 @@ class MMMApp {
 
         try {
             // Call backend optimization API
-            const response = await fetch(`${this.apiUrl}/optimization/budget`, {
+            const response = await fetch(`${this.apiUrl}/optimization/run`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
