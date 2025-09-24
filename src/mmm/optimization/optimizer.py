@@ -26,7 +26,7 @@ class Constraint:
 
 @dataclass
 class OptimizationResult:
-    optimal_spend: Dict[str, float]
+    optimal_spend: Dict[str, float]  # Budget-constrained allocation
     optimal_profit: float
     current_profit: float
     profit_uplift: float
@@ -34,6 +34,11 @@ class OptimizationResult:
     constraints_binding: List[str]
     response_curves: Dict[str, Tuple[np.ndarray, np.ndarray]]  # (spend_range, profit_values)
     scenario_analysis: Dict[str, Any]
+    # New fields for true profit maximization
+    true_optimal_spend: Dict[str, float] = None  # True optimal (mROI >= 1)
+    true_optimal_profit: float = None
+    true_optimal_budget: float = None  # Total spend for true optimal
+    budget_reduction_pct: float = None  # How much less to spend for true optimal
 
 
 @dataclass
@@ -131,7 +136,30 @@ class BudgetOptimizer:
         constraints_binding = self._identify_binding_constraints(
             optimal_spend, constraints, total_budget
         )
-        
+
+        # Find true optimal allocation (respecting mROI >= 1)
+        increment = max(100.0, total_budget * 0.01)
+        true_optimal_spend = self._find_true_optimal_allocation(optimal_spend, increment)
+        true_optimal_budget = sum(true_optimal_spend.values())
+        true_optimal_profit = self._calculate_profit(true_optimal_spend, optimization_window_days)
+        budget_reduction_pct = ((total_budget - true_optimal_budget) / total_budget * 100) if total_budget > 0 else 0
+
+        # Log comparison
+        import structlog
+        logger = structlog.get_logger()
+        logger.info("=" * 80)
+        logger.info("OPTIMIZATION RESULTS SUMMARY")
+        logger.info("-" * 80)
+        logger.info(f"Budget-Constrained Allocation (spending full ${total_budget:,.0f}):")
+        logger.info(f"  Profit: ${optimal_profit:,.0f}")
+        logger.info(f"  Uplift vs current: ${profit_uplift:,.0f}")
+        logger.info("-" * 80)
+        logger.info(f"True Optimal Allocation (mROI >= 1 constraint):")
+        logger.info(f"  Budget: ${true_optimal_budget:,.0f} ({budget_reduction_pct:.1f}% reduction)")
+        logger.info(f"  Profit: ${true_optimal_profit:,.0f}")
+        logger.info(f"  Additional profit from reduced spending: ${true_optimal_profit - optimal_profit:,.0f}")
+        logger.info("=" * 80)
+
         return OptimizationResult(
             optimal_spend=optimal_spend,
             optimal_profit=optimal_profit,
@@ -140,7 +168,11 @@ class BudgetOptimizer:
             shadow_prices=shadow_prices,
             constraints_binding=constraints_binding,
             response_curves=response_curves,
-            scenario_analysis=scenario_analysis
+            scenario_analysis=scenario_analysis,
+            true_optimal_spend=true_optimal_spend,
+            true_optimal_profit=true_optimal_profit,
+            true_optimal_budget=true_optimal_budget,
+            budget_reduction_pct=budget_reduction_pct
         )
     
     def _setup_constraints(self,
@@ -348,6 +380,87 @@ class BudgetOptimizer:
             logger.info(f"  {channel}: ${optimal_spend[channel]:,.0f} ({pct:.1f}%) - Final mROI: {final_roi:.4f}")
 
         return optimal_spend
+
+    def _find_true_optimal_allocation(self,
+                                     initial_allocation: Dict[str, float],
+                                     increment: float) -> Dict[str, float]:
+        """
+        Finds true profit-maximizing allocation where all channels have mROI >= 1.
+        Reduces spend in channels with mROI < 1 until mROI = 1 or spend = 0.
+        """
+        import structlog
+        logger = structlog.get_logger()
+
+        true_optimal = initial_allocation.copy()
+
+        logger.info("Finding true optimal allocation (mROI >= 1 constraint)")
+
+        # Check initial marginal ROIs
+        initial_mrois = {}
+        channels_to_reduce = []
+
+        for channel, spend in true_optimal.items():
+            if spend > 0:
+                mroi = self._calculate_marginal_roi(channel, spend, increment)
+                initial_mrois[channel] = mroi
+                if mroi < 1.0:
+                    channels_to_reduce.append(channel)
+                    logger.info(f"  {channel}: Spend=${spend:,.0f}, mROI={mroi:.4f} < 1.0 - will reduce")
+                else:
+                    logger.info(f"  {channel}: Spend=${spend:,.0f}, mROI={mroi:.4f} >= 1.0 - OK")
+
+        if not channels_to_reduce:
+            logger.info("All channels already have mROI >= 1. No adjustment needed.")
+            return true_optimal
+
+        # Reduce spend in channels with mROI < 1
+        max_iterations = 10000
+        iteration = 0
+
+        while channels_to_reduce and iteration < max_iterations:
+            iteration += 1
+
+            # Find channel with lowest mROI
+            worst_channel = None
+            worst_mroi = float('inf')
+
+            for channel in channels_to_reduce:
+                if true_optimal[channel] > 0:
+                    mroi = self._calculate_marginal_roi(channel, true_optimal[channel], increment)
+                    if mroi < worst_mroi:
+                        worst_mroi = mroi
+                        worst_channel = channel
+
+            if worst_channel is None:
+                break
+
+            # Reduce spend in worst channel
+            reduction = min(increment, true_optimal[worst_channel])
+            true_optimal[worst_channel] -= reduction
+
+            # Check if mROI is now >= 1 or spend is 0
+            if true_optimal[worst_channel] <= 0:
+                true_optimal[worst_channel] = 0
+                channels_to_reduce.remove(worst_channel)
+                logger.info(f"  Iteration {iteration}: {worst_channel} reduced to $0")
+            else:
+                new_mroi = self._calculate_marginal_roi(worst_channel, true_optimal[worst_channel], increment)
+                if new_mroi >= 1.0:
+                    channels_to_reduce.remove(worst_channel)
+                    logger.info(f"  Iteration {iteration}: {worst_channel} at ${true_optimal[worst_channel]:,.0f}, mROI={new_mroi:.4f} >= 1.0")
+                elif iteration % 100 == 0:
+                    logger.info(f"  Iteration {iteration}: {worst_channel} at ${true_optimal[worst_channel]:,.0f}, mROI={new_mroi:.4f}")
+
+        # Final summary
+        logger.info("True optimal allocation found:")
+        total_spend = sum(true_optimal.values())
+        for channel, spend in true_optimal.items():
+            if spend > 0:
+                final_mroi = self._calculate_marginal_roi(channel, spend, increment)
+                logger.info(f"  {channel}: ${spend:,.0f} (mROI={final_mroi:.4f})")
+        logger.info(f"Total spend: ${total_spend:,.0f}")
+
+        return true_optimal
 
     def _calculate_shadow_prices(self,
                                optimal_spend: Dict[str, float],
