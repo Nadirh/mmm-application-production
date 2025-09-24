@@ -147,35 +147,50 @@ class BudgetOptimizer:
         # Log comparison
         import structlog
         logger = structlog.get_logger()
+
+        # Calculate media-only profit (excluding baseline)
+        baseline_profit = self.model_params.alpha_baseline * optimization_window_days + \
+                         self.model_params.alpha_trend * (optimization_window_days * optimization_window_days / 2 / 365)
+        media_profit = optimal_profit - baseline_profit
+        true_media_profit = true_optimal_profit - baseline_profit
+
         logger.info("=" * 80)
         logger.info("OPTIMIZATION RESULTS SUMMARY")
         logger.info("-" * 80)
         logger.info(f"Budget-Constrained Allocation (spending full ${total_budget:,.0f}):")
-        logger.info(f"  Gross Profit: ${optimal_profit:,.0f}")
+        logger.info(f"  Media-Generated Profit: ${media_profit:,.0f}")
         logger.info(f"  Media Spend: ${total_budget:,.0f}")
-        logger.info(f"  Net Profit/Loss: ${optimal_profit - total_budget:,.0f}")
-        logger.info(f"  ROI: {optimal_profit / total_budget:.2f}")
+        logger.info(f"  Net Profit/Loss from Media: ${media_profit - total_budget:,.0f}")
+        logger.info(f"  Media ROI: {media_profit / total_budget:.2f}")
 
-        # Warning if losing money
-        if optimal_profit < total_budget:
-            logger.warning(f"⚠️  WARNING: Spending ${total_budget:,.0f} generates only ${optimal_profit:,.0f} in profit!")
-            logger.warning(f"⚠️  This is a NET LOSS of ${total_budget - optimal_profit:,.0f}")
+        # Strong warning if media spend loses money
+        if media_profit < total_budget:
+            logger.warning("=" * 80)
+            logger.warning("🚨 CRITICAL WARNING: MEDIA SPEND IS UNPROFITABLE!")
+            logger.warning(f"   Spending ${total_budget:,.0f} on media generates only ${media_profit:,.0f} in profit")
+            logger.warning(f"   This is a NET LOSS of ${total_budget - media_profit:,.0f}")
+            logger.warning(f"   Every dollar spent returns only ${media_profit/total_budget:.2f}")
+            logger.warning("=" * 80)
 
         logger.info("-" * 80)
         logger.info(f"True Optimal Allocation (mROI >= 1 constraint):")
         logger.info(f"  Recommended Budget: ${true_optimal_budget:,.0f} ({budget_reduction_pct:.1f}% reduction)")
-        logger.info(f"  Gross Profit: ${true_optimal_profit:,.0f}")
-        logger.info(f"  Net Profit: ${true_optimal_profit - true_optimal_budget:,.0f}")
-        logger.info(f"  ROI: {true_optimal_profit / true_optimal_budget:.2f}" if true_optimal_budget > 0 else "  ROI: N/A")
+        logger.info(f"  Media-Generated Profit: ${true_media_profit:,.0f}")
+        logger.info(f"  Net Profit from Media: ${true_media_profit - true_optimal_budget:,.0f}")
+        logger.info(f"  Media ROI: {true_media_profit / true_optimal_budget:.2f}" if true_optimal_budget > 0 else "  Media ROI: N/A")
 
         # Clear recommendation
         if budget_reduction_pct > 10:
             savings = total_budget - true_optimal_budget
+            media_net_current = media_profit - total_budget
+            media_net_optimal = true_media_profit - true_optimal_budget
+            net_benefit = media_net_optimal - media_net_current
+
             logger.warning("=" * 80)
             logger.warning("💡 STRONG RECOMMENDATION:")
             logger.warning(f"   Reduce budget from ${total_budget:,.0f} to ${true_optimal_budget:,.0f}")
-            logger.warning(f"   This would save ${savings:,.0f} in spend")
-            logger.warning(f"   Net benefit: ${(true_optimal_profit - true_optimal_budget) - (optimal_profit - total_budget):,.0f}")
+            logger.warning(f"   This would save ${savings:,.0f} in media spend")
+            logger.warning(f"   Net benefit to bottom line: ${net_benefit:,.0f}")
             logger.warning("=" * 80)
 
         logger.info("=" * 80)
@@ -250,38 +265,43 @@ class BudgetOptimizer:
         return bounds, constraint_funcs
     
     def _calculate_profit(self, spend_dict: Dict[str, float], days: int) -> float:
-        """Calculates profit for given spend allocation over specified days."""
-        # Simulate daily profit calculation
-        # In practice, this would use the MMM model prediction
-        
+        """Calculates profit for given spend allocation.
+
+        Note: spend_dict contains TOTAL spend for the optimization period, not daily spend.
+        The 'days' parameter is kept for backward compatibility but not used in channel calculations.
+        """
         total_profit = 0.0
-        
-        # Baseline profit
+
+        # Baseline profit (non-media contribution) - this does scale with days
         baseline_daily = self.model_params.alpha_baseline + \
                         self.model_params.alpha_trend * (days / 2)  # Average trend
         total_profit += baseline_daily * days
-        
+
         # Channel contributions
-        for channel, daily_spend in spend_dict.items():
+        for channel, total_spend in spend_dict.items():
             if channel not in self.model_params.channel_alphas:
                 continue
-                
+
             alpha = self.model_params.channel_alphas[channel]
             beta = self.model_params.channel_betas[channel]
             r = self.model_params.channel_rs[channel]
-            
-            # Simplified calculation - apply adstock and saturation
-            # Adstock effect (simplified geometric series)
+
+            # Skip channels with no contribution
+            if alpha <= 0:
+                continue
+
+            # Apply adstock to total spend
             adstock_multiplier = 1 / (1 - r) if r < 0.99 else 10.0
-            adstocked_spend = daily_spend * adstock_multiplier
-            
+            adstocked_spend = total_spend * adstock_multiplier
+
             # Saturation effect
             saturated_spend = np.power(adstocked_spend, beta)
-            
-            # Channel contribution
-            channel_profit = alpha * saturated_spend * days
+
+            # Channel contribution: profit = alpha * (adstocked_spend)^beta
+            # No multiplication by days - spend_dict already contains total spend for the period
+            channel_profit = alpha * saturated_spend
             total_profit += channel_profit
-        
+
         return total_profit
 
     def _calculate_marginal_roi(self, channel: str, current_spend: float, increment: float = 100.0) -> float:
