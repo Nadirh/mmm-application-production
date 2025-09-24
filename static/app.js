@@ -2375,13 +2375,13 @@ class MMMApp {
     initializeProfitMaximizer(marginalROIByChannel, baselineSpend) {
         const optimizeButton = document.getElementById('optimize-button');
         if (optimizeButton) {
-            optimizeButton.addEventListener('click', () => {
-                this.optimizeBudgetAllocation(marginalROIByChannel, baselineSpend);
+            optimizeButton.addEventListener('click', async () => {
+                await this.optimizeBudgetAllocation(marginalROIByChannel, baselineSpend);
             });
         }
     }
 
-    optimizeBudgetAllocation(marginalROIByChannel, baselineSpend) {
+    async optimizeBudgetAllocation(marginalROIByChannel, baselineSpend) {
         const totalBudget = parseFloat(document.getElementById('total-budget').value);
 
         if (!totalBudget || totalBudget <= 0) {
@@ -2390,24 +2390,90 @@ class MMMApp {
         }
 
         const channels = Object.keys(marginalROIByChannel);
-        const constraints = {};
+        const constraintsList = [];
 
-        // Collect constraints
+        // Collect constraints for API call
         channels.forEach(channel => {
             const minInput = document.getElementById(`min-${channel}`);
             const maxInput = document.getElementById(`max-${channel}`);
 
-            constraints[channel] = {
-                min: parseFloat(minInput.value) || 0,
-                max: parseFloat(maxInput.value) || totalBudget
-            };
+            const min = parseFloat(minInput.value) || 0;
+            const max = parseFloat(maxInput.value) || totalBudget;
+
+            if (min > 0) {
+                constraintsList.push({
+                    channel: channel,
+                    type: "floor",
+                    value: min,
+                    description: `Minimum spend for ${channel}`
+                });
+            }
+            if (max < totalBudget) {
+                constraintsList.push({
+                    channel: channel,
+                    type: "cap",
+                    value: max,
+                    description: `Maximum spend for ${channel}`
+                });
+            }
         });
 
-        // Perform optimization
-        const optimization = this.performOptimization(totalBudget, constraints, channels, baselineSpend);
+        try {
+            // Call backend optimization API
+            const response = await fetch(`${this.apiUrl}/optimization/budget`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    run_id: this.runId,
+                    current_spend: baselineSpend || {},
+                    total_budget: totalBudget,
+                    constraints: constraintsList,
+                    optimization_window_days: 1  // Daily optimization
+                })
+            });
 
-        // Display results
-        this.displayOptimizationResults(optimization, totalBudget);
+            const result = await response.json();
+
+            if (response.ok && result.optimization_results) {
+                // Use backend optimization results
+                const optimization = {
+                    allocation: result.optimization_results.optimal_spend,
+                    // Use media profit (excluding baseline) for accurate display
+                    totalExpectedProfit: result.optimization_results.media_optimal_profit || result.optimization_results.optimal_profit,
+                    totalAllocated: totalBudget,
+                    remainingBudget: 0,
+                    // Include additional info from backend
+                    mediaROI: result.optimization_results.media_roi,
+                    warnings: []
+                };
+
+                // Add warning if media ROI < 1
+                if (result.optimization_results.media_roi && result.optimization_results.media_roi < 1) {
+                    optimization.warnings.push(`⚠️ Warning: Media ROI is ${result.optimization_results.media_roi.toFixed(2)} - every dollar spent returns only $${result.optimization_results.media_roi.toFixed(2)}`);
+                }
+
+                this.displayOptimizationResults(optimization, totalBudget);
+            } else {
+                // Fallback to client-side optimization if API fails
+                console.warn('Backend optimization failed, using client-side fallback:', result);
+                const constraints = {};
+                channels.forEach(channel => {
+                    const minInput = document.getElementById(`min-${channel}`);
+                    const maxInput = document.getElementById(`max-${channel}`);
+                    constraints[channel] = {
+                        min: parseFloat(minInput.value) || 0,
+                        max: parseFloat(maxInput.value) || totalBudget
+                    };
+                });
+                const optimization = this.performOptimization(totalBudget, constraints, channels, baselineSpend);
+                this.displayOptimizationResults(optimization, totalBudget);
+            }
+        } catch (error) {
+            console.error('Error calling optimization API:', error);
+            alert('Error optimizing budget allocation. Please try again.');
+        }
     }
 
     performOptimization(totalBudget, constraints, channels, baselineSpend) {
@@ -2520,6 +2586,16 @@ class MMMApp {
             allocationDiv.innerHTML = `<div class="error-message">${optimization.error}</div>`;
             resultsDiv.classList.remove('hidden');
             return;
+        }
+
+        // Display warnings if present
+        if (optimization.warnings && optimization.warnings.length > 0) {
+            const warningsHtml = optimization.warnings.map(warning =>
+                `<div style="background: #fff3cd; border: 2px solid #ffc107; color: #856404; padding: 10px; margin-bottom: 15px; border-radius: 5px;">
+                    ${warning}
+                </div>`
+            ).join('');
+            allocationDiv.innerHTML = warningsHtml + allocationDiv.innerHTML;
         }
 
         // Create allocation display
