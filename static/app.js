@@ -9,6 +9,7 @@ class MMMApp {
         this.progressInterval = null;
         this.cvStructureInfo = null;  // Store CV structure info
         this.nestedCVUsed = false;    // Track if nested CV was used
+        this.foldParameters = [];     // Store parameters for each fold
         this.chartInstances = {};      // Store chart instances to properly destroy them
 
         // Add VISIBLE indicator that JS is working
@@ -517,6 +518,16 @@ class MMMApp {
         if (progress.progress?.type === 'outer_fold_complete' || progress.progress?.type === 'fold_complete') {
             const fold = progress.progress.fold;
             const mape = progress.progress.mape.toFixed(2);
+
+            // Store fold parameters if present
+            if (progress.progress.parameters) {
+                this.foldParameters[fold - 1] = {
+                    fold: fold,
+                    mape: parseFloat(mape),
+                    parameters: progress.progress.parameters
+                };
+                console.log(`Stored parameters for fold ${fold}:`, this.foldParameters[fold - 1]);
+            }
             const params = progress.progress.parameters;
 
             // Create detailed fold results display
@@ -896,6 +907,7 @@ class MMMApp {
                         <p style="margin-top: 15px; font-size: 0.9em; color: #555;">
                             <strong>Note:</strong> Parameters were selected using inner folds, then evaluated on outer test sets for unbiased performance estimates.
                         </p>
+                        ${this.foldParameters.length > 0 ? this.createFoldParametersTable() : ''}
                     </div>
                 `;
 
@@ -2379,6 +2391,116 @@ class MMMApp {
                 await this.optimizeBudgetAllocation(marginalROIByChannel, baselineSpend);
             });
         }
+    }
+
+    createFoldParametersTable() {
+        if (!this.foldParameters || this.foldParameters.length === 0) {
+            return '';
+        }
+
+        // Get all unique channels from the first fold
+        const channels = Object.keys(this.foldParameters[0].parameters.channel_alphas || {});
+
+        let tableHtml = `
+            <div style="margin-top: 20px;">
+                <h4 style="color: #1976d2; margin-bottom: 10px;">📈 Fold Parameters and Performance</h4>
+                <table style="width: 100%; font-size: 0.85em; border-collapse: collapse;">
+                    <thead>
+                        <tr style="background: #bbdefb;">
+                            <th rowspan="2" style="padding: 8px; border: 1px solid #1976d2;">Fold</th>
+                            <th rowspan="2" style="padding: 8px; border: 1px solid #1976d2;">MAPE (%)</th>
+        `;
+
+        // Add channel headers
+        channels.forEach(channel => {
+            tableHtml += `<th colspan="3" style="padding: 8px; border: 1px solid #1976d2;">${channel}</th>`;
+        });
+
+        tableHtml += `
+                        </tr>
+                        <tr style="background: #bbdefb;">
+        `;
+
+        // Add parameter subheaders for each channel
+        channels.forEach(channel => {
+            tableHtml += `
+                            <th style="padding: 4px; border: 1px solid #1976d2; font-size: 0.8em;">α</th>
+                            <th style="padding: 4px; border: 1px solid #1976d2; font-size: 0.8em;">β</th>
+                            <th style="padding: 4px; border: 1px solid #1976d2; font-size: 0.8em;">r</th>
+            `;
+        });
+
+        tableHtml += `
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+
+        // Add data rows
+        this.foldParameters.forEach(foldData => {
+            if (!foldData) return; // Skip missing folds
+
+            tableHtml += `
+                        <tr style="background: white;">
+                            <td style="padding: 8px; border: 1px solid #1976d2; text-align: center; font-weight: bold;">${foldData.fold}</td>
+                            <td style="padding: 8px; border: 1px solid #1976d2; text-align: center;">${foldData.mape.toFixed(2)}</td>
+            `;
+
+            channels.forEach(channel => {
+                const alpha = foldData.parameters.channel_alphas[channel] || 0;
+                const beta = foldData.parameters.channel_betas[channel] || 0;
+                const r = foldData.parameters.channel_rs[channel] || 0;
+
+                tableHtml += `
+                            <td style="padding: 4px; border: 1px solid #1976d2; text-align: center; font-size: 0.85em;">${alpha.toFixed(1)}</td>
+                            <td style="padding: 4px; border: 1px solid #1976d2; text-align: center; font-size: 0.85em;">${beta.toFixed(3)}</td>
+                            <td style="padding: 4px; border: 1px solid #1976d2; text-align: center; font-size: 0.85em;">${r.toFixed(3)}</td>
+                `;
+            });
+
+            tableHtml += `
+                        </tr>
+            `;
+        });
+
+        // Add average row if we have multiple folds
+        if (this.foldParameters.length > 1) {
+            const avgMape = this.foldParameters.reduce((sum, f) => sum + (f ? f.mape : 0), 0) / this.foldParameters.filter(f => f).length;
+
+            tableHtml += `
+                        <tr style="background: #e3f2fd; font-weight: bold;">
+                            <td style="padding: 8px; border: 1px solid #1976d2; text-align: center;">Avg</td>
+                            <td style="padding: 8px; border: 1px solid #1976d2; text-align: center;">${avgMape.toFixed(2)}</td>
+            `;
+
+            channels.forEach(channel => {
+                const validFolds = this.foldParameters.filter(f => f);
+                const avgAlpha = validFolds.reduce((sum, f) => sum + (f.parameters.channel_alphas[channel] || 0), 0) / validFolds.length;
+                const avgBeta = validFolds.reduce((sum, f) => sum + (f.parameters.channel_betas[channel] || 0), 0) / validFolds.length;
+                const avgR = validFolds.reduce((sum, f) => sum + (f.parameters.channel_rs[channel] || 0), 0) / validFolds.length;
+
+                tableHtml += `
+                            <td style="padding: 4px; border: 1px solid #1976d2; text-align: center; font-size: 0.85em;">${avgAlpha.toFixed(1)}</td>
+                            <td style="padding: 4px; border: 1px solid #1976d2; text-align: center; font-size: 0.85em;">${avgBeta.toFixed(3)}</td>
+                            <td style="padding: 4px; border: 1px solid #1976d2; text-align: center; font-size: 0.85em;">${avgR.toFixed(3)}</td>
+                `;
+            });
+
+            tableHtml += `
+                        </tr>
+            `;
+        }
+
+        tableHtml += `
+                    </tbody>
+                </table>
+                <p style="margin-top: 10px; font-size: 0.85em; color: #666;">
+                    <strong>Legend:</strong> α = channel impact coefficient, β = saturation parameter (lower = faster saturation), r = adstock carryover rate
+                </p>
+            </div>
+        `;
+
+        return tableHtml;
     }
 
     async optimizeBudgetAllocation(marginalROIByChannel, baselineSpend) {
