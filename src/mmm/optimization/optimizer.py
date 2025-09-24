@@ -243,15 +243,18 @@ class BudgetOptimizer:
 
         # Apply adstock
         adstock_multiplier = 1 / (1 - r) if r < 0.99 else 10.0
-        adstocked_current = current_spend * adstock_multiplier
-        adstocked_new = (current_spend + increment) * adstock_multiplier
 
-        # Calculate marginal return
-        current_contribution = alpha * np.power(adstocked_current, beta)
-        new_contribution = alpha * np.power(adstocked_new, beta)
-        marginal_return = new_contribution - current_contribution
+        # Avoid division by zero for zero spend
+        if current_spend < 1.0:
+            current_spend = 1.0
 
-        return marginal_return / increment  # ROI per dollar
+        adstocked_spend = current_spend * adstock_multiplier
+
+        # Calculate derivative: d/dx[alpha * x^beta] = alpha * beta * x^(beta-1)
+        # For adstocked spend, we also multiply by adstock_multiplier
+        marginal_roi = alpha * beta * np.power(adstocked_spend, beta - 1) * adstock_multiplier
+
+        return marginal_roi  # ROI per dollar
 
     def _optimize_with_marginal_roi(self,
                                    channels: List[str],
@@ -280,10 +283,19 @@ class BudgetOptimizer:
             return optimal_spend
 
         # Greedy allocation based on marginal ROI
-        increment = 1000.0  # Allocate in $1000 increments
-        max_iterations = int((total_budget - allocated_budget) / increment) + 100
+        # Use larger increments for large budgets to avoid excessive iterations
+        if total_budget > 1000000:
+            increment = total_budget / 1000  # 0.1% of budget per increment
+        else:
+            increment = 1000.0  # $1000 increments for smaller budgets
 
-        for _ in range(max_iterations):
+        max_iterations = min(10000, int((total_budget - allocated_budget) / increment) + 100)
+
+        import structlog
+        logger = structlog.get_logger()
+        logger.info(f"Starting marginal ROI optimization: budget={total_budget}, increment={increment}, max_iterations={max_iterations}")
+
+        for iteration in range(max_iterations):
             if allocated_budget >= total_budget - increment:
                 break
 
@@ -313,6 +325,10 @@ class BudgetOptimizer:
             best_channel = max(marginal_rois, key=marginal_rois.get)
             if marginal_rois[best_channel] <= 0:
                 break  # No positive marginal ROI remaining
+
+            # Log every 100 iterations for large budgets
+            if iteration % 100 == 0:
+                logger.debug(f"Iteration {iteration}: marginal_rois={marginal_rois}, best={best_channel}, allocated={allocated_budget}")
 
             optimal_spend[best_channel] += increment
             allocated_budget += increment
