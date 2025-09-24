@@ -2404,8 +2404,19 @@ class MMMApp {
             return '';
         }
 
-        // Get all unique channels from the first fold
-        const channels = Object.keys(this.foldParameters[0].parameters.channel_alphas || {});
+        // Find the first valid fold with channel data
+        let channels = [];
+        for (const fold of this.foldParameters) {
+            if (fold && fold.channel_alphas) {
+                channels = Object.keys(fold.channel_alphas);
+                break;
+            }
+        }
+
+        if (channels.length === 0) {
+            console.warn('No channel data found in fold parameters');
+            return '';
+        }
 
         let tableHtml = `
             <div style="margin-top: 20px;">
@@ -2453,9 +2464,9 @@ class MMMApp {
             `;
 
             channels.forEach(channel => {
-                const alpha = foldData.parameters.channel_alphas[channel] || 0;
-                const beta = foldData.parameters.channel_betas[channel] || 0;
-                const r = foldData.parameters.channel_rs[channel] || 0;
+                const alpha = foldData.channel_alphas ? (foldData.channel_alphas[channel] || 0) : 0;
+                const beta = foldData.channel_betas ? (foldData.channel_betas[channel] || 0) : 0;
+                const r = foldData.channel_rs ? (foldData.channel_rs[channel] || 0) : 0;
 
                 tableHtml += `
                             <td style="padding: 4px; border: 1px solid #1976d2; text-align: center; font-size: 0.85em;">${alpha.toFixed(1)}</td>
@@ -2480,10 +2491,10 @@ class MMMApp {
             `;
 
             channels.forEach(channel => {
-                const validFolds = this.foldParameters.filter(f => f);
-                const avgAlpha = validFolds.reduce((sum, f) => sum + (f.parameters.channel_alphas[channel] || 0), 0) / validFolds.length;
-                const avgBeta = validFolds.reduce((sum, f) => sum + (f.parameters.channel_betas[channel] || 0), 0) / validFolds.length;
-                const avgR = validFolds.reduce((sum, f) => sum + (f.parameters.channel_rs[channel] || 0), 0) / validFolds.length;
+                const validFolds = this.foldParameters.filter(f => f && f.channel_alphas);
+                const avgAlpha = validFolds.reduce((sum, f) => sum + ((f.channel_alphas && f.channel_alphas[channel]) || 0), 0) / validFolds.length;
+                const avgBeta = validFolds.reduce((sum, f) => sum + ((f.channel_betas && f.channel_betas[channel]) || 0), 0) / validFolds.length;
+                const avgR = validFolds.reduce((sum, f) => sum + ((f.channel_rs && f.channel_rs[channel]) || 0), 0) / validFolds.length;
 
                 tableHtml += `
                             <td style="padding: 4px; border: 1px solid #1976d2; text-align: center; font-size: 0.85em;">${avgAlpha.toFixed(1)}</td>
