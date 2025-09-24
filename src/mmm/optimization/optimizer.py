@@ -200,8 +200,9 @@ class BudgetOptimizer:
         )
 
         # Find true optimal allocation (respecting mROI >= 1)
-        increment = max(100.0, total_budget * 0.01)
-        true_optimal_spend = self._find_true_optimal_allocation(optimal_spend, increment)
+        # First find global optimum by building up from zero
+        increment = max(10.0, total_budget * 0.01)
+        true_optimal_spend = self._find_global_optimum(channels, increment)
         true_optimal_budget = sum(true_optimal_spend.values())
         true_optimal_profit = self._calculate_profit(true_optimal_spend, optimization_window_days)
         budget_reduction_pct = ((total_budget - true_optimal_budget) / total_budget * 100) if total_budget > 0 else 0
@@ -426,8 +427,9 @@ class BudgetOptimizer:
         if remaining_budget <= 0:
             return optimal_spend
 
-        # Use 1% of total budget as increment size (or $100 minimum for small budgets)
-        increment = max(100.0, total_budget * 0.01)
+        # Use 1% of total budget as increment size (or $10 minimum for very small budgets)
+        # This ensures proper granularity: $10 for $1K budget, $100 for $10K budget, etc.
+        increment = max(10.0, total_budget * 0.01)
         max_iterations = int(remaining_budget / increment) + 1
 
         import structlog
@@ -494,86 +496,86 @@ class BudgetOptimizer:
 
         return optimal_spend
 
-    def _find_true_optimal_allocation(self,
-                                     initial_allocation: Dict[str, float],
-                                     increment: float) -> Dict[str, float]:
+    def _find_global_optimum(self, channels: List[str], increment: float) -> Dict[str, float]:
         """
-        Finds true profit-maximizing allocation where all channels have mROI >= 1.
-        Reduces spend in channels with mROI < 1 until mROI = 1 or spend = 0.
+        Finds the global optimum by building up from zero spend until marginal ROI < 1.
+        This ensures we find the SINGLE true optimal point regardless of input budget.
         """
         import structlog
         logger = structlog.get_logger()
 
-        true_optimal = initial_allocation.copy()
+        logger.info("Finding global optimum (building from zero)")
 
-        logger.info("Finding true optimal allocation (mROI >= 1 constraint)")
+        # Start with zero allocation
+        allocation = {channel: 0.0 for channel in channels}
 
-        # Check initial marginal ROIs
-        initial_mrois = {}
-        channels_to_reduce = []
-
-        for channel, spend in true_optimal.items():
-            if spend > 0:
-                mroi = self._calculate_marginal_roi(channel, spend, increment)
-                initial_mrois[channel] = mroi
-                if mroi < 1.0:
-                    channels_to_reduce.append(channel)
-                    logger.info(f"  {channel}: Spend=${spend:,.0f}, mROI={mroi:.4f} < 1.0 - will reduce")
-                else:
-                    logger.info(f"  {channel}: Spend=${spend:,.0f}, mROI={mroi:.4f} >= 1.0 - OK")
-
-        if not channels_to_reduce:
-            logger.info("All channels already have mROI >= 1. No adjustment needed.")
-            return true_optimal
-
-        # Reduce spend in channels with mROI < 1
-        max_iterations = 10000
+        # Track marginal ROIs for all channels
+        active_channels = set(channels)
         iteration = 0
+        max_iterations = 100000  # Safety limit
 
-        while channels_to_reduce and iteration < max_iterations:
+        while active_channels and iteration < max_iterations:
             iteration += 1
 
-            # Find channel with lowest mROI
-            worst_channel = None
-            worst_mroi = float('inf')
+            # Find channel with highest marginal ROI
+            best_channel = None
+            best_mroi = 0.0
 
-            for channel in channels_to_reduce:
-                if true_optimal[channel] > 0:
-                    mroi = self._calculate_marginal_roi(channel, true_optimal[channel], increment)
-                    if mroi < worst_mroi:
-                        worst_mroi = mroi
-                        worst_channel = channel
+            for channel in active_channels:
+                current_spend = allocation[channel]
+                # For zero spend, use a small value to avoid numerical issues
+                test_spend = max(1.0, current_spend)
+                mroi = self._calculate_marginal_roi(channel, test_spend, increment)
 
-            if worst_channel is None:
+                if mroi > best_mroi:
+                    best_mroi = mroi
+                    best_channel = channel
+
+            # If best mROI < 1, we're done (no profitable additions)
+            if best_mroi < 1.0:
+                logger.info(f"  Stopping: Best mROI = {best_mroi:.4f} < 1.0")
                 break
 
-            # Reduce spend in worst channel
-            reduction = min(increment, true_optimal[worst_channel])
-            true_optimal[worst_channel] -= reduction
+            # Add increment to best channel
+            if best_channel:
+                allocation[best_channel] += increment
 
-            # Check if mROI is now >= 1 or spend is 0
-            if true_optimal[worst_channel] <= 0:
-                true_optimal[worst_channel] = 0
-                channels_to_reduce.remove(worst_channel)
-                logger.info(f"  Iteration {iteration}: {worst_channel} reduced to $0")
+                # Re-check mROI after adding increment
+                new_mroi = self._calculate_marginal_roi(best_channel, allocation[best_channel], increment)
+
+                if iteration % 1000 == 0:
+                    total_spend = sum(allocation.values())
+                    logger.info(f"  Iteration {iteration}: Added ${increment:.0f} to {best_channel}, "
+                              f"new mROI={new_mroi:.4f}, total spend=${total_spend:,.0f}")
+
+                # Remove channel if mROI drops below 1
+                if new_mroi < 1.0:
+                    active_channels.discard(best_channel)
+                    logger.info(f"  {best_channel} reached optimal at ${allocation[best_channel]:,.0f} "
+                              f"(mROI={new_mroi:.4f} < 1.0)")
             else:
-                new_mroi = self._calculate_marginal_roi(worst_channel, true_optimal[worst_channel], increment)
-                if new_mroi >= 1.0:
-                    channels_to_reduce.remove(worst_channel)
-                    logger.info(f"  Iteration {iteration}: {worst_channel} at ${true_optimal[worst_channel]:,.0f}, mROI={new_mroi:.4f} >= 1.0")
-                elif iteration % 100 == 0:
-                    logger.info(f"  Iteration {iteration}: {worst_channel} at ${true_optimal[worst_channel]:,.0f}, mROI={new_mroi:.4f}")
+                break
 
         # Final summary
-        logger.info("True optimal allocation found:")
-        total_spend = sum(true_optimal.values())
-        for channel, spend in true_optimal.items():
+        total_spend = sum(allocation.values())
+        logger.info(f"Global optimum found at total spend: ${total_spend:,.0f}")
+
+        for channel, spend in allocation.items():
             if spend > 0:
                 final_mroi = self._calculate_marginal_roi(channel, spend, increment)
                 logger.info(f"  {channel}: ${spend:,.0f} (mROI={final_mroi:.4f})")
-        logger.info(f"Total spend: ${total_spend:,.0f}")
 
-        return true_optimal
+        return allocation
+
+    def _find_true_optimal_allocation(self,
+                                     initial_allocation: Dict[str, float],
+                                     increment: float) -> Dict[str, float]:
+        """
+        Legacy method - kept for backward compatibility.
+        Now just calls _find_global_optimum to ensure consistency.
+        """
+        channels = list(initial_allocation.keys())
+        return self._find_global_optimum(channels, increment)
 
     def _calculate_shadow_prices(self,
                                optimal_spend: Dict[str, float],

@@ -2446,12 +2446,31 @@ class MMMApp {
                     remainingBudget: 0,
                     // Include additional info from backend
                     mediaROI: result.optimization_results.media_roi,
+                    netProfitLoss: result.optimization_results.net_profit_loss,
+                    isProfitable: result.optimization_results.is_profitable,
+                    trueOptimal: result.optimization_results.true_optimal_spend,
+                    trueOptimalBudget: result.optimization_results.true_optimal_budget,
+                    trueOptimalProfit: result.optimization_results.true_optimal_profit,
+                    budgetReductionPct: result.optimization_results.budget_reduction_pct,
                     warnings: []
                 };
 
-                // Add warning if media ROI < 1
-                if (result.optimization_results.media_roi && result.optimization_results.media_roi < 1) {
-                    optimization.warnings.push(`⚠️ Warning: Media ROI is ${result.optimization_results.media_roi.toFixed(2)} - every dollar spent returns only $${result.optimization_results.media_roi.toFixed(2)}`);
+                // Add critical warning if spending loses money
+                if (!result.optimization_results.is_profitable) {
+                    const loss = Math.abs(result.optimization_results.net_profit_loss);
+                    optimization.warnings.push(`🚨 CRITICAL WARNING: Media spend is UNPROFITABLE!`);
+                    optimization.warnings.push(`   Spending $${totalBudget.toLocaleString()} generates only $${result.optimization_results.media_optimal_profit.toFixed(0).toLocaleString()} in profit`);
+                    optimization.warnings.push(`   This is a NET LOSS of $${loss.toFixed(0).toLocaleString()}`);
+                    optimization.warnings.push(`   Every dollar spent returns only $${result.optimization_results.media_roi.toFixed(2)}`);
+                }
+
+                // Add true optimal recommendation
+                if (result.optimization_results.true_optimal_budget && result.optimization_results.budget_reduction_pct > 10) {
+                    const savings = totalBudget - result.optimization_results.true_optimal_budget;
+                    const trueNetProfit = result.optimization_results.true_optimal_profit - result.optimization_results.true_optimal_budget;
+                    optimization.warnings.push(`💡 RECOMMENDED: Reduce budget to $${result.optimization_results.true_optimal_budget.toFixed(0).toLocaleString()}`);
+                    optimization.warnings.push(`   This would save $${savings.toFixed(0).toLocaleString()} in media spend`);
+                    optimization.warnings.push(`   True optimal allocation maximizes profit at lower spend`);
                 }
 
                 this.displayOptimizationResults(optimization, totalBudget);
@@ -2589,13 +2608,22 @@ class MMMApp {
         }
 
         // Display warnings if present
+        let warningsHtml = '';
         if (optimization.warnings && optimization.warnings.length > 0) {
-            const warningsHtml = optimization.warnings.map(warning =>
-                `<div style="background: #fff3cd; border: 2px solid #ffc107; color: #856404; padding: 10px; margin-bottom: 15px; border-radius: 5px;">
-                    ${warning}
-                </div>`
-            ).join('');
-            allocationDiv.innerHTML = warningsHtml + allocationDiv.innerHTML;
+            const isCritical = optimization.warnings.some(w => w.includes('CRITICAL'));
+            const bgColor = isCritical ? '#f8d7da' : '#fff3cd';
+            const borderColor = isCritical ? '#dc3545' : '#ffc107';
+            const textColor = isCritical ? '#721c24' : '#856404';
+
+            warningsHtml = optimization.warnings.map(warning => {
+                const style = warning.includes('CRITICAL')
+                    ? `background: ${bgColor}; border: 2px solid ${borderColor}; color: ${textColor}; padding: 12px; margin-bottom: 5px; border-radius: 5px; font-weight: bold;`
+                    : warning.includes('RECOMMENDED')
+                    ? `background: #d4edda; border: 2px solid #28a745; color: #155724; padding: 12px; margin-bottom: 5px; border-radius: 5px; font-weight: bold;`
+                    : `background: ${bgColor}; border: 1px solid ${borderColor}; color: ${textColor}; padding: 8px; margin-bottom: 3px; border-radius: 3px; margin-left: 20px;`;
+                return `<div style="${style}">${warning}</div>`;
+            }).join('');
+            warningsHtml = `<div style="margin-bottom: 20px;">${warningsHtml}</div>`;
         }
 
         // Create allocation display
@@ -2615,6 +2643,7 @@ class MMMApp {
         }).join('');
 
         allocationDiv.innerHTML = `
+            ${warningsHtml}
             <div class="allocation-grid">
                 ${allocationHtml}
             </div>

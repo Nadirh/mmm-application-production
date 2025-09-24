@@ -124,7 +124,15 @@ async def run_optimization(request: OptimizationRequest) -> Dict[str, Any]:
                 "media_optimal_profit": result.media_optimal_profit,
                 "media_current_profit": result.media_current_profit,
                 "media_profit_uplift": result.media_profit_uplift,
-                "media_roi": result.media_optimal_profit / request.total_budget if request.total_budget > 0 else 0
+                "media_roi": result.media_optimal_profit / request.total_budget if request.total_budget > 0 else 0,
+                # True optimal allocation (mROI >= 1 constraint)
+                "true_optimal_spend": result.true_optimal_spend,
+                "true_optimal_profit": result.true_optimal_profit,
+                "true_optimal_budget": result.true_optimal_budget,
+                "budget_reduction_pct": result.budget_reduction_pct,
+                # Net profit/loss calculation
+                "net_profit_loss": float(result.media_optimal_profit - request.total_budget),
+                "is_profitable": bool(result.media_optimal_profit >= request.total_budget)
             },
             "response_curves": response_curves_data,
             "scenario_analysis": result.scenario_analysis
