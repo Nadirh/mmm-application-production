@@ -223,23 +223,31 @@ class MMMApp {
             const absCorr = Math.abs(correlation);
             let strengthClass = 'weak';
             let strengthLabel = 'Weak';
+            let color = '#dc3545'; // Red for weak
 
-            if (absCorr >= 0.7) {
+            if (absCorr >= 0.5) {
                 strengthClass = 'strong';
                 strengthLabel = 'Strong';
-            } else if (absCorr >= 0.4) {
-                strengthClass = 'moderate';
-                strengthLabel = 'Moderate';
+                color = '#28a745'; // Green for strong
+            } else if (absCorr >= 0.25) {
+                strengthClass = 'okay';
+                strengthLabel = 'Okay';
+                color = '#ffc107'; // Yellow/amber for okay
+            } else {
+                // Less than 25% is weak (already set above)
+                strengthClass = 'weak';
+                strengthLabel = 'Weak';
+                color = '#dc3545'; // Red for weak
             }
 
             correlationHtml += `
                 <div class="correlation-card" style="padding: 12px; border: 1px solid #ddd; border-radius: 8px; background: white;">
                     <div style="font-weight: bold; margin-bottom: 5px;">${this.formatChannelName(channel)}</div>
-                    <div style="font-size: 24px; color: ${correlation >= 0 ? '#28a745' : '#dc3545'};">
+                    <div style="font-size: 24px; color: ${color};">
                         ${correlation >= 0 ? '+' : ''}${(correlation * 100).toFixed(1)}%
                     </div>
                     <div style="font-size: 12px; color: #666;">
-                        <span class="correlation-${strengthClass}">${strengthLabel} correlation</span>
+                        <span style="color: ${color}; font-weight: bold;">${strengthLabel} correlation</span>
                     </div>
                 </div>
             `;
