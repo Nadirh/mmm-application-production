@@ -167,9 +167,11 @@ async def upload_data(file: UploadFile = File(...), db: AsyncSession = Depends(g
             "status": "validated"
         }
         
-        # Save to database
+        # Save to database with default client_id for now (Chunk 1)
         db_upload_session = UploadSession(
             id=upload_id,
+            client_id="default",  # Default client for backward compatibility
+            organization_id="default",  # Default organization for backward compatibility
             filename=file.filename,
             file_path=upload_path,
             total_days=data_summary.total_days,

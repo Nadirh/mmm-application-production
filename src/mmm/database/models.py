@@ -14,12 +14,17 @@ from mmm.database.connection import Base
 class UploadSession(Base):
     """Model for data upload sessions."""
     __tablename__ = "upload_sessions"
-    
+
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+
+    # Multi-tenant fields (nullable for backward compatibility)
+    client_id = Column(String, nullable=True, default="default", index=True)
+    organization_id = Column(String, nullable=True, default="default", index=True)
+
     filename = Column(String, nullable=False)
     upload_time = Column(TIMESTAMP(timezone=True), default=lambda: datetime.now(UTC))
     file_path = Column(String, nullable=False)
-    
+
     # Data summary
     total_days = Column(Integer)
     total_profit = Column(Float)
@@ -67,10 +72,14 @@ class UploadSession(Base):
 class TrainingRun(Base):
     """Model for model training runs."""
     __tablename__ = "training_runs"
-    
+
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     upload_session_id = Column(String, ForeignKey("upload_sessions.id"), nullable=False)
-    
+
+    # Multi-tenant fields (nullable for backward compatibility)
+    client_id = Column(String, nullable=True, default="default", index=True)
+    organization_id = Column(String, nullable=True, default="default", index=True)
+
     # Training metadata
     start_time = Column(TIMESTAMP(timezone=True), default=lambda: datetime.now(UTC))
     completion_time = Column(TIMESTAMP(timezone=True))
@@ -114,10 +123,14 @@ class TrainingRun(Base):
 class OptimizationRun(Base):
     """Model for budget optimization runs."""
     __tablename__ = "optimization_runs"
-    
+
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     training_run_id = Column(String, ForeignKey("training_runs.id"), nullable=False)
-    
+
+    # Multi-tenant fields (nullable for backward compatibility)
+    client_id = Column(String, nullable=True, default="default", index=True)
+    organization_id = Column(String, nullable=True, default="default", index=True)
+
     # Optimization metadata
     created_time = Column(TIMESTAMP(timezone=True), default=lambda: datetime.now(UTC))
     

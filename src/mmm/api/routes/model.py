@@ -331,6 +331,8 @@ async def train_model(
         db_training_run = TrainingRun(
             id=run_id,
             upload_session_id=upload_id,
+            client_id="default",  # Default client for backward compatibility
+            organization_id="default",  # Default organization for backward compatibility
             start_time=start_time,
             status="queued",
             training_config=config,
@@ -458,6 +460,8 @@ async def train_model_with_custom_r_values(
         db_training_run = TrainingRun(
             id=run_id,
             upload_session_id=upload_id,
+            client_id="default",  # Default client for backward compatibility
+            organization_id="default",  # Default organization for backward compatibility
             start_time=start_time,
             status="queued",
             training_config=config,
