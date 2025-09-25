@@ -65,6 +65,11 @@ async def auth_middleware(request: Request, call_next):
         path == "/api/admin/training/list"):
         return await call_next(request)
 
+    # Skip auth middleware for client root paths - they handle auth themselves
+    client_paths = ["/acme/", "/beta/", "/gamma/", "/demo/", "/test/"]
+    if path in client_paths:
+        return await call_next(request)
+
     # Skip authentication for static files (CSS, JS, etc.)
     if path.startswith("/static"):
         return await call_next(request)
@@ -107,9 +112,8 @@ async def auth_middleware(request: Request, call_next):
             headers={"WWW-Authenticate": "Basic realm='MMM Application'"},
         )
 
-    # For the main page and client paths, show login form
-    client_paths = ["/acme/", "/beta/", "/gamma/", "/demo/", "/test/"]
-    if path == "/" or path in client_paths:
+    # For the main page, show login form (client paths are handled by their own routes)
+    if path == "/":
         # Check if this is a form submission
         if request.method == "POST":
             form = await request.form()

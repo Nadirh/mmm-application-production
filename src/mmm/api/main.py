@@ -260,19 +260,28 @@ def root():
         """)
 
 
-# Add root routes for each client path
-@app.get("/acme/", response_class=HTMLResponse)
-@app.get("/beta/", response_class=HTMLResponse)
-@app.get("/gamma/", response_class=HTMLResponse)
-@app.get("/demo/", response_class=HTMLResponse)
-@app.get("/test/", response_class=HTMLResponse)
-def client_root():
-    """Serve the frontend application for client-specific paths."""
+# Add root route handler for client paths using path parameter
+@app.get("/{client_name}/", response_class=HTMLResponse)
+async def client_root_get(client_name: str, request: Request):
+    """Serve the frontend application for client-specific paths (GET)."""
+    # Validate that this is a known client path
+    valid_clients = ["acme", "beta", "gamma", "demo", "test"]
+    if client_name not in valid_clients:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    # Check for authentication - this needs to happen here since middleware ordering is complex
+    from mmm.api.auth import verify_session, SESSION_COOKIE_NAME, get_login_page
+
+    session_token = request.cookies.get(SESSION_COOKIE_NAME)
+    if not session_token or not verify_session(session_token):
+        # Show login page for unauthenticated requests
+        return HTMLResponse(get_login_page(), status_code=401)
+
+    # Serve the main application for authenticated users
     try:
         with open("static/index.html", "r") as f:
-            # Modify the HTML to use relative paths for assets
             html_content = f.read()
-            # This will work because we've mounted static files at each client path
             return HTMLResponse(html_content)
     except FileNotFoundError:
         return HTMLResponse("""
@@ -286,6 +295,43 @@ def client_root():
         </body>
         </html>
         """)
+
+
+@app.post("/{client_name}/", response_class=HTMLResponse)
+async def client_root_post(client_name: str, request: Request):
+    """Handle login form submission for client-specific paths (POST)."""
+    from fastapi import Form
+    from fastapi.responses import RedirectResponse
+    from fastapi.security import HTTPBasicCredentials
+    from mmm.api.auth import verify_credentials, create_session, SESSION_COOKIE_NAME, get_login_page
+
+    # Validate that this is a known client path
+    valid_clients = ["acme", "beta", "gamma", "demo", "test"]
+    if client_name not in valid_clients:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    # Process login form
+    form = await request.form()
+    username = form.get("username")
+    password = form.get("password")
+
+    credentials = HTTPBasicCredentials(username=username, password=password)
+    if verify_credentials(credentials):
+        # Create session and redirect back to client path
+        token = create_session()
+        response = RedirectResponse(url=f"/{client_name}/", status_code=303)
+        response.set_cookie(
+            key=SESSION_COOKIE_NAME,
+            value=token,
+            max_age=8 * 3600,  # 8 hours
+            httponly=True,
+            samesite="lax"
+        )
+        return response
+    else:
+        # Show login form with error
+        return HTMLResponse(get_login_page(error="Invalid credentials"), status_code=401)
 
 
 @app.get("/api/info")
