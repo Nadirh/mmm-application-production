@@ -107,8 +107,9 @@ async def auth_middleware(request: Request, call_next):
             headers={"WWW-Authenticate": "Basic realm='MMM Application'"},
         )
 
-    # For the main page, show login form
-    if path == "/" or not path.startswith("/"):
+    # For the main page and client paths, show login form
+    client_paths = ["/acme/", "/beta/", "/gamma/", "/demo/", "/test/"]
+    if path == "/" or path in client_paths:
         # Check if this is a form submission
         if request.method == "POST":
             form = await request.form()
@@ -119,7 +120,8 @@ async def auth_middleware(request: Request, call_next):
             if verify_credentials(credentials):
                 # Create session
                 token = create_session()
-                response = RedirectResponse(url="/", status_code=303)
+                # Redirect to the same path to maintain client context
+                response = RedirectResponse(url=path, status_code=303)
                 response.set_cookie(
                     key=SESSION_COOKIE_NAME,
                     value=token,
