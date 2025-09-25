@@ -212,7 +212,27 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 
-# Define explicit client path routes (not using catch-all to avoid conflicts)
+# Client routes will be defined after API routers for proper ordering
+
+# Include routers
+app.include_router(health.router, prefix="/api/health", tags=["health"])
+app.include_router(data.router, prefix="/api/data", tags=["data"])
+app.include_router(model.router, prefix="/api/model", tags=["model"])
+app.include_router(optimization.router, prefix="/api/optimization", tags=["optimization"])
+app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
+app.include_router(websocket.router, prefix="/ws", tags=["websocket"])
+
+# Also include routers for each client path
+client_paths = ['/acme', '/beta', '/gamma', '/demo', '/test']
+for client_path in client_paths:
+    app.include_router(health.router, prefix=f"{client_path}/api/health", tags=["health"])
+    app.include_router(data.router, prefix=f"{client_path}/api/data", tags=["data"])
+    app.include_router(model.router, prefix=f"{client_path}/api/model", tags=["model"])
+    app.include_router(optimization.router, prefix=f"{client_path}/api/optimization", tags=["optimization"])
+    app.include_router(admin.router, prefix=f"{client_path}/api/admin", tags=["admin"])
+    app.include_router(websocket.router, prefix=f"{client_path}/ws", tags=["websocket"])
+
+# Define client path routes AFTER API routers (based on FastAPI best practices)
 @app.get("/acme/", response_class=HTMLResponse)
 @app.get("/beta/", response_class=HTMLResponse)
 @app.get("/gamma/", response_class=HTMLResponse)
@@ -282,24 +302,6 @@ async def client_root_post(request: Request):
         return response
     else:
         return HTMLResponse(get_login_page(error="Invalid credentials"), status_code=401)
-
-# Include routers
-app.include_router(health.router, prefix="/api/health", tags=["health"])
-app.include_router(data.router, prefix="/api/data", tags=["data"])
-app.include_router(model.router, prefix="/api/model", tags=["model"])
-app.include_router(optimization.router, prefix="/api/optimization", tags=["optimization"])
-app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
-app.include_router(websocket.router, prefix="/ws", tags=["websocket"])
-
-# Also include routers for each client path
-client_paths = ['/acme', '/beta', '/gamma', '/demo', '/test']
-for client_path in client_paths:
-    app.include_router(health.router, prefix=f"{client_path}/api/health", tags=["health"])
-    app.include_router(data.router, prefix=f"{client_path}/api/data", tags=["data"])
-    app.include_router(model.router, prefix=f"{client_path}/api/model", tags=["model"])
-    app.include_router(optimization.router, prefix=f"{client_path}/api/optimization", tags=["optimization"])
-    app.include_router(admin.router, prefix=f"{client_path}/api/admin", tags=["admin"])
-    app.include_router(websocket.router, prefix=f"{client_path}/ws", tags=["websocket"])
 
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
