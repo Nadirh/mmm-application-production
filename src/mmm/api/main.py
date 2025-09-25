@@ -63,7 +63,11 @@ async def lifespan(app: FastAPI):
     
     # Create necessary directories
     settings.setup_directories()
-    
+
+    # Migrate existing files to client directories (Chunk 2)
+    from mmm.utils.storage import storage_manager
+    storage_manager.migrate_existing_files()
+
     # Initialize database connections
     from mmm.database.connection import db_manager
     from mmm.utils.cache import cache_manager

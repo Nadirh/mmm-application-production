@@ -16,6 +16,7 @@ from mmm.data.processor import DataProcessor
 from mmm.config.settings import settings
 from mmm.database.connection import get_db
 from mmm.database.models import UploadSession
+from mmm.utils.storage import storage_manager
 
 router = APIRouter()
 logger = structlog.get_logger()
@@ -130,10 +131,16 @@ async def upload_data(file: UploadFile = File(...), db: AsyncSession = Depends(g
                 detail=f"File too large. Maximum size: {settings.api.max_upload_size // (1024*1024)}MB"
             )
         
-        # Save file temporarily
-        upload_path = os.path.join(settings.api.upload_dir, f"{upload_id}.csv")
+        # Save file to client-specific directory (Chunk 2)
+        # For now, using "default" client - will be replaced with actual client_id later
+        client_id = "default"
+        filename = f"{upload_id}.csv"
+        upload_path = storage_manager.get_client_file_path(client_id, filename)
+
         with open(upload_path, "wb") as f:
             f.write(content)
+
+        logger.info(f"File saved to client directory: {upload_path}")
         
         # Parse CSV
         df = pd.read_csv(upload_path)
@@ -170,10 +177,10 @@ async def upload_data(file: UploadFile = File(...), db: AsyncSession = Depends(g
         # Save to database with default client_id for now (Chunk 1)
         db_upload_session = UploadSession(
             id=upload_id,
-            client_id="default",  # Default client for backward compatibility
+            client_id=client_id,  # Using client_id variable from above
             organization_id="default",  # Default organization for backward compatibility
             filename=file.filename,
-            file_path=upload_path,
+            file_path=str(upload_path),  # Convert Path to string for database
             total_days=data_summary.total_days,
             total_profit=data_summary.total_profit,
             total_annual_spend=data_summary.total_annual_spend,
