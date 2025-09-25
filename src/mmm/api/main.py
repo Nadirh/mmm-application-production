@@ -122,14 +122,57 @@ if not settings.is_development():
 
 
 @app.middleware("http")
+async def extract_client_from_path(request: Request, call_next):
+    """Extract client ID from URL path and add as header."""
+    path = request.url.path
+
+    # Check if path starts with a client prefix
+    # Format: /client-name/... or /c/client-name/...
+    client_prefixes = {
+        '/acme/': 'client-acme',
+        '/beta/': 'client-beta',
+        '/gamma/': 'client-gamma',
+        '/demo/': 'client-demo',
+        '/test/': 'client-test',
+    }
+
+    # Check each prefix
+    for prefix, client_id in client_prefixes.items():
+        if path.startswith(prefix):
+            # Remove the client prefix from the path for internal routing
+            new_path = path[len(prefix)-1:]  # Keep the trailing slash
+            if not new_path:
+                new_path = '/'
+
+            # Create a new scope with the modified path and client header
+            scope = dict(request.scope)
+            scope['path'] = new_path
+
+            # Add client ID to headers
+            headers = dict(scope.get('headers', []))
+            headers = [(k, v) for k, v in scope.get('headers', [])]
+            headers.append((b'x-client-id', client_id.encode()))
+            scope['headers'] = headers
+
+            # Create new request with modified scope
+            request = Request(scope, request.receive)
+
+            logger.info(f"Client {client_id} detected from path {path}")
+            break
+
+    response = await call_next(request)
+    return response
+
+
+@app.middleware("http")
 async def log_requests(request: Request, call_next):
     """Log all HTTP requests."""
     start_time = time.time()
-    
+
     response = await call_next(request)
-    
+
     process_time = time.time() - start_time
-    
+
     logger.info(
         "HTTP request processed",
         method=request.method,
@@ -137,7 +180,7 @@ async def log_requests(request: Request, call_next):
         status_code=response.status_code,
         process_time=process_time
     )
-    
+
     return response
 
 
@@ -183,6 +226,11 @@ app.include_router(websocket.router, prefix="/ws", tags=["websocket"])
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+# Also mount static files for each client path
+client_paths = ['/acme', '/beta', '/gamma', '/demo', '/test']
+for client_path in client_paths:
+    app.mount(f"{client_path}/static", StaticFiles(directory="static"), name=f"static{client_path}")
+
 
 @app.get("/", response_class=HTMLResponse)
 def root():
@@ -203,6 +251,35 @@ def root():
         </body>
         </html>
         """)
+
+
+# Add root routes for each client path
+@app.get("/acme/", response_class=HTMLResponse)
+@app.get("/beta/", response_class=HTMLResponse)
+@app.get("/gamma/", response_class=HTMLResponse)
+@app.get("/demo/", response_class=HTMLResponse)
+@app.get("/test/", response_class=HTMLResponse)
+def client_root():
+    """Serve the frontend application for client-specific paths."""
+    try:
+        with open("static/index.html", "r") as f:
+            # Modify the HTML to use relative paths for assets
+            html_content = f.read()
+            # This will work because we've mounted static files at each client path
+            return HTMLResponse(html_content)
+    except FileNotFoundError:
+        return HTMLResponse("""
+        <!DOCTYPE html>
+        <html>
+        <head><title>MMM Dashboard</title></head>
+        <body>
+            <h1>Media Mix Modeling API</h1>
+            <p>Client-specific access</p>
+            <p>Frontend not found. Please check static files.</p>
+        </body>
+        </html>
+        """)
+
 
 @app.get("/api/info")
 async def api_info():

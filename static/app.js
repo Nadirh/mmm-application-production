@@ -95,23 +95,13 @@ class MMMApp {
         this.showStatus('📤 Uploading file...', 'info');
 
         try {
-            // Get selected client ID
-            const clientSelect = document.getElementById('client-select');
-            const clientId = clientSelect ? clientSelect.value : 'default';
-
+            // Client ID is now handled server-side based on URL path
+            // No need to send X-Client-ID header from frontend
             const formData = new FormData();
             formData.append('file', file);
 
-            // Add client headers
-            const headers = {};
-            if (clientId && clientId !== 'default') {
-                headers['X-Client-ID'] = clientId;
-                this.showStatus(`📤 Uploading file for ${clientId}...`, 'info');
-            }
-
             const response = await fetch(`${this.apiUrl}/data/upload`, {
                 method: 'POST',
-                headers: headers,
                 body: formData
             });
 
@@ -326,22 +316,12 @@ class MMMApp {
             document.getElementById('start-training').disabled = true;
             this.showSection('progress-section');
 
-            // Get selected client ID for training
-            const clientSelect = document.getElementById('client-select');
-            const clientId = clientSelect ? clientSelect.value : 'default';
-
-            const headers = {
-                'Content-Type': 'application/json'
-            };
-
-            // Add client header if not default
-            if (clientId && clientId !== 'default') {
-                headers['X-Client-ID'] = clientId;
-            }
-
+            // Client ID is now handled server-side based on URL path
             const response = await fetch(`${this.apiUrl}/model/train`, {
                 method: 'POST',
-                headers: headers,
+                headers: {
+                    'Content-Type': 'application/json'
+                },
                 body: JSON.stringify(requestData)
             });
 

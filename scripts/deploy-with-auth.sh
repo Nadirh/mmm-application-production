@@ -7,9 +7,34 @@ echo "=== MMM Application Deployment with Authentication ==="
 echo "======================================================="
 
 # Configuration
-VERSION="${1:-v1.9.81}"  # Use first argument or default to v1.9.81
 ECR_REPO="727529935876.dkr.ecr.us-east-2.amazonaws.com/mmm-application"
 AWS_REGION="us-east-2"
+
+# Get the latest version from ECR if not provided
+if [ -z "$1" ]; then
+    echo "Fetching latest version from ECR..."
+    LATEST_VERSION=$(aws ecr describe-images \
+        --repository-name mmm-application \
+        --region $AWS_REGION \
+        --query 'sort_by(imageDetails,&imagePushedAt)[-1].imageTags[0]' \
+        --output text)
+
+    if [[ $LATEST_VERSION =~ v[0-9]+\.([0-9]+)\.([0-9]+) ]]; then
+        MINOR=${BASH_REMATCH[1]}
+        PATCH=${BASH_REMATCH[2]}
+        NEW_PATCH=$((PATCH + 1))
+        VERSION="v1.${MINOR}.${NEW_PATCH}"
+        echo "Latest version: $LATEST_VERSION"
+        echo "New version: $VERSION"
+    else
+        # Fallback if pattern doesn't match
+        VERSION="v1.9.146"
+        echo "Could not parse latest version, using: $VERSION"
+    fi
+else
+    VERSION="$1"
+    echo "Using provided version: $VERSION"
+fi
 
 # Set production environment variables
 export MMM_ENV="production"
