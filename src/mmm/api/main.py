@@ -212,16 +212,14 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 
-# Define client path routes FIRST (before other routes for proper precedence)
-@app.get("/{client_name}/", response_class=HTMLResponse)
-async def client_root_get(client_name: str, request: Request):
+# Define explicit client path routes (not using catch-all to avoid conflicts)
+@app.get("/acme/", response_class=HTMLResponse)
+@app.get("/beta/", response_class=HTMLResponse)
+@app.get("/gamma/", response_class=HTMLResponse)
+@app.get("/demo/", response_class=HTMLResponse)
+@app.get("/test/", response_class=HTMLResponse)
+async def client_root_get(request: Request):
     """Serve the frontend application for client-specific paths (GET)."""
-    # Validate that this is a known client path
-    valid_clients = ["acme", "beta", "gamma", "demo", "test"]
-    if client_name not in valid_clients:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=404, detail="Not Found")
-
     # Check for authentication
     from mmm.api.auth import verify_session, SESSION_COOKIE_NAME, get_login_page
 
@@ -248,19 +246,21 @@ async def client_root_get(client_name: str, request: Request):
         """)
 
 
-@app.post("/{client_name}/", response_class=HTMLResponse)
-async def client_root_post(client_name: str, request: Request):
+@app.post("/acme/", response_class=HTMLResponse)
+@app.post("/beta/", response_class=HTMLResponse)
+@app.post("/gamma/", response_class=HTMLResponse)
+@app.post("/demo/", response_class=HTMLResponse)
+@app.post("/test/", response_class=HTMLResponse)
+async def client_root_post(request: Request):
     """Handle login form submission for client-specific paths (POST)."""
     from fastapi import Form
     from fastapi.responses import RedirectResponse
     from fastapi.security import HTTPBasicCredentials
     from mmm.api.auth import verify_credentials, create_session, SESSION_COOKIE_NAME, get_login_page
 
-    # Validate that this is a known client path
-    valid_clients = ["acme", "beta", "gamma", "demo", "test"]
-    if client_name not in valid_clients:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=404, detail="Not Found")
+    # Get client name from path
+    path = request.url.path
+    client_name = path.strip('/').split('/')[0]
 
     # Process login form
     form = await request.form()
