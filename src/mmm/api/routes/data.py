@@ -3,7 +3,7 @@ Data upload and validation endpoints.
 """
 from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks, Depends, Request
 from fastapi.responses import JSONResponse
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Tuple
 import pandas as pd
 import uuid
 import os
@@ -18,6 +18,7 @@ from mmm.database.connection import get_db
 from mmm.database.models import UploadSession
 from mmm.utils.storage import storage_manager
 from mmm.utils.encryption import file_encryption
+from mmm.api.dependencies import get_client_context
 
 router = APIRouter()
 logger = structlog.get_logger()
@@ -115,37 +116,44 @@ async def get_upload_session_from_db(upload_id: str, db: AsyncSession, include_p
 
 
 @router.post("/upload")
-async def upload_data(file: UploadFile = File(...), db: AsyncSession = Depends(get_db)) -> Dict[str, Any]:
+async def upload_data(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    client_context: Tuple[str, str] = Depends(get_client_context)
+) -> Dict[str, Any]:
     """
     Upload and validate CSV data file.
-    
+
     Returns:
         - upload_id: Unique identifier for this upload
         - data_summary: Summary of uploaded data
         - validation_errors: List of validation errors/warnings
     """
-    logger.info("Data upload started", filename=file.filename)
-    
+    # Extract client context from dependency
+    client_id, organization_id = client_context
+
+    logger.info("Data upload started",
+                filename=file.filename,
+                client_id=client_id,
+                organization_id=organization_id)
+
     # Validate file
     if not file.filename.endswith('.csv'):
         raise HTTPException(status_code=400, detail="Only CSV files are allowed")
-    
+
     # Generate upload session ID
     upload_id = str(uuid.uuid4())
-    
+
     try:
         # Read CSV file
         content = await file.read()
         if len(content) > settings.api.max_upload_size:
             raise HTTPException(
-                status_code=413, 
+                status_code=413,
                 detail=f"File too large. Maximum size: {settings.api.max_upload_size // (1024*1024)}MB"
             )
-        
+
         # Save file to client-specific directory (Chunk 2)
-        # For now, using "default" client - headers will be added in fixed Chunk 4
-        client_id = "default"
-        organization_id = "default"
 
         filename = f"{upload_id}.csv"
         upload_path = storage_manager.get_client_file_path(client_id, filename)

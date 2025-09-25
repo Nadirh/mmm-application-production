@@ -3,7 +3,7 @@ Model training and results endpoints.
 """
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Tuple
 import uuid
 import asyncio
 from datetime import datetime, UTC
@@ -18,6 +18,7 @@ from mmm.database.connection import get_db
 from mmm.api.websocket import connection_manager
 from mmm.utils.progress import create_progress_tracker, create_progress_callback
 from mmm.model.response_curves import create_response_curve_generator
+from mmm.api.dependencies import get_client_context
 from mmm.utils.cache import cache_manager
 
 router = APIRouter()
@@ -248,7 +249,8 @@ async def train_model_background(upload_id: str, run_id: str, config: Dict[str, 
 async def train_model(
     request: Dict[str, Any],
     background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    client_context: Tuple[str, str] = Depends(get_client_context)
 ) -> Dict[str, str]:
     """
     Start model training for uploaded data.
@@ -259,6 +261,9 @@ async def train_model(
     Returns:
         run_id: Unique identifier for this training run
     """
+    # Extract client context from dependency
+    client_id, organization_id = client_context
+
     # Extract parameters from request body
     upload_id = request.get("upload_id")
     config = request.get("config")
@@ -331,8 +336,8 @@ async def train_model(
         db_training_run = TrainingRun(
             id=run_id,
             upload_session_id=upload_id,
-            client_id="default",  # Default client for backward compatibility
-            organization_id="default",  # Default organization for backward compatibility
+            client_id=client_id,  # Using client_id from headers
+            organization_id=organization_id,  # Using organization_id from headers
             start_time=start_time,
             status="queued",
             training_config=config,
@@ -460,8 +465,8 @@ async def train_model_with_custom_r_values(
         db_training_run = TrainingRun(
             id=run_id,
             upload_session_id=upload_id,
-            client_id="default",  # Default client for backward compatibility
-            organization_id="default",  # Default organization for backward compatibility
+            client_id=client_id,  # Using client_id from headers
+            organization_id=organization_id,  # Using organization_id from headers
             start_time=start_time,
             status="queued",
             training_config=config,

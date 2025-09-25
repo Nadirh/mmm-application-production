@@ -1,14 +1,15 @@
 """
 Budget optimization endpoints.
 """
-from fastapi import APIRouter, HTTPException
-from typing import Dict, Any, List, Optional
+from fastapi import APIRouter, HTTPException, Depends
+from typing import Dict, Any, List, Optional, Tuple
 from pydantic import BaseModel
 import structlog
 
 from mmm.optimization.optimizer import BudgetOptimizer, Constraint, ConstraintType, OptimizationResult
 from mmm.api.routes.model import training_runs
 from mmm.config.settings import settings
+from mmm.api.dependencies import get_client_context
 
 router = APIRouter()
 logger = structlog.get_logger()
@@ -30,7 +31,10 @@ class OptimizationRequest(BaseModel):
 
 
 @router.post("/run")
-async def run_optimization(request: OptimizationRequest) -> Dict[str, Any]:
+async def run_optimization(
+    request: OptimizationRequest,
+    client_context: Tuple[str, str] = Depends(get_client_context)
+) -> Dict[str, Any]:
     """
     Run budget optimization with constraints.
     
