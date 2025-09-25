@@ -212,55 +212,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 
-# Include routers
-app.include_router(health.router, prefix="/api/health", tags=["health"])
-app.include_router(data.router, prefix="/api/data", tags=["data"])
-app.include_router(model.router, prefix="/api/model", tags=["model"])
-app.include_router(optimization.router, prefix="/api/optimization", tags=["optimization"])
-app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
-app.include_router(websocket.router, prefix="/ws", tags=["websocket"])
-
-# Also include routers for each client path
-client_paths = ['/acme', '/beta', '/gamma', '/demo', '/test']
-for client_path in client_paths:
-    app.include_router(health.router, prefix=f"{client_path}/api/health", tags=["health"])
-    app.include_router(data.router, prefix=f"{client_path}/api/data", tags=["data"])
-    app.include_router(model.router, prefix=f"{client_path}/api/model", tags=["model"])
-    app.include_router(optimization.router, prefix=f"{client_path}/api/optimization", tags=["optimization"])
-    app.include_router(admin.router, prefix=f"{client_path}/api/admin", tags=["admin"])
-    app.include_router(websocket.router, prefix=f"{client_path}/ws", tags=["websocket"])
-
-# Mount static files
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
-# Also mount static files for each client path
-client_paths = ['/acme', '/beta', '/gamma', '/demo', '/test']
-for client_path in client_paths:
-    app.mount(f"{client_path}/static", StaticFiles(directory="static"), name=f"static{client_path}")
-
-
-@app.get("/", response_class=HTMLResponse)
-def root():
-    """Serve the frontend application."""
-    try:
-        with open("static/index.html", "r") as f:
-            return HTMLResponse(f.read())
-    except FileNotFoundError:
-        return HTMLResponse("""
-        <!DOCTYPE html>
-        <html>
-        <head><title>MMM Dashboard</title></head>
-        <body>
-            <h1>Media Mix Modeling API</h1>
-            <p>Version: 1.0.0</p>
-            <p>Environment: production</p>
-            <p>Frontend not found. Please check static files.</p>
-        </body>
-        </html>
-        """)
-
-
-# Add root route handler for client paths using path parameter
+# Define client path routes FIRST (before other routes for proper precedence)
 @app.get("/{client_name}/", response_class=HTMLResponse)
 async def client_root_get(client_name: str, request: Request):
     """Serve the frontend application for client-specific paths (GET)."""
@@ -270,12 +222,11 @@ async def client_root_get(client_name: str, request: Request):
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Not Found")
 
-    # Check for authentication - this needs to happen here since middleware ordering is complex
+    # Check for authentication
     from mmm.api.auth import verify_session, SESSION_COOKIE_NAME, get_login_page
 
     session_token = request.cookies.get(SESSION_COOKIE_NAME)
     if not session_token or not verify_session(session_token):
-        # Show login page for unauthenticated requests
         return HTMLResponse(get_login_page(), status_code=401)
 
     # Serve the main application for authenticated users
@@ -324,14 +275,63 @@ async def client_root_post(client_name: str, request: Request):
         response.set_cookie(
             key=SESSION_COOKIE_NAME,
             value=token,
-            max_age=8 * 3600,  # 8 hours
+            max_age=8 * 3600,
             httponly=True,
             samesite="lax"
         )
         return response
     else:
-        # Show login form with error
         return HTMLResponse(get_login_page(error="Invalid credentials"), status_code=401)
+
+# Include routers
+app.include_router(health.router, prefix="/api/health", tags=["health"])
+app.include_router(data.router, prefix="/api/data", tags=["data"])
+app.include_router(model.router, prefix="/api/model", tags=["model"])
+app.include_router(optimization.router, prefix="/api/optimization", tags=["optimization"])
+app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
+app.include_router(websocket.router, prefix="/ws", tags=["websocket"])
+
+# Also include routers for each client path
+client_paths = ['/acme', '/beta', '/gamma', '/demo', '/test']
+for client_path in client_paths:
+    app.include_router(health.router, prefix=f"{client_path}/api/health", tags=["health"])
+    app.include_router(data.router, prefix=f"{client_path}/api/data", tags=["data"])
+    app.include_router(model.router, prefix=f"{client_path}/api/model", tags=["model"])
+    app.include_router(optimization.router, prefix=f"{client_path}/api/optimization", tags=["optimization"])
+    app.include_router(admin.router, prefix=f"{client_path}/api/admin", tags=["admin"])
+    app.include_router(websocket.router, prefix=f"{client_path}/ws", tags=["websocket"])
+
+# Mount static files
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# Also mount static files for each client path
+client_paths = ['/acme', '/beta', '/gamma', '/demo', '/test']
+for client_path in client_paths:
+    app.mount(f"{client_path}/static", StaticFiles(directory="static"), name=f"static{client_path}")
+
+
+@app.get("/", response_class=HTMLResponse)
+def root():
+    """Serve the frontend application."""
+    try:
+        with open("static/index.html", "r") as f:
+            return HTMLResponse(f.read())
+    except FileNotFoundError:
+        return HTMLResponse("""
+        <!DOCTYPE html>
+        <html>
+        <head><title>MMM Dashboard</title></head>
+        <body>
+            <h1>Media Mix Modeling API</h1>
+            <p>Version: 1.0.0</p>
+            <p>Environment: production</p>
+            <p>Frontend not found. Please check static files.</p>
+        </body>
+        </html>
+        """)
+
+
+# Client routes moved to line 216 for proper route precedence
 
 
 @app.get("/api/info")
