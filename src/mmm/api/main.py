@@ -136,25 +136,22 @@ async def extract_client_from_path(request: Request, call_next):
         '/test/': 'client-test',
     }
 
-    # Check each prefix
+    # Check each prefix and add client header WITHOUT modifying the path
     for prefix, client_id in client_prefixes.items():
         if path.startswith(prefix):
-            # Remove the client prefix from the path for internal routing
-            new_path = path[len(prefix)-1:]  # Keep the trailing slash
-            if not new_path:
-                new_path = '/'
+            # Add client ID to headers without modifying the path
+            # This allows FastAPI routing to work correctly
+            mutable_headers = dict(request.headers)
+            mutable_headers['x-client-id'] = client_id
 
-            # Create a new scope with the modified path and client header
+            # Create a new scope with the added header
             scope = dict(request.scope)
-            scope['path'] = new_path
-
-            # Add client ID to headers
-            headers = dict(scope.get('headers', []))
-            headers = [(k, v) for k, v in scope.get('headers', [])]
-            headers.append((b'x-client-id', client_id.encode()))
+            headers = [(k.encode() if isinstance(k, str) else k,
+                       v.encode() if isinstance(v, str) else v)
+                      for k, v in mutable_headers.items()]
             scope['headers'] = headers
 
-            # Create new request with modified scope
+            # Create new request with modified headers but original path
             request = Request(scope, request.receive)
 
             logger.info(f"Client {client_id} detected from path {path}")
@@ -222,6 +219,16 @@ app.include_router(model.router, prefix="/api/model", tags=["model"])
 app.include_router(optimization.router, prefix="/api/optimization", tags=["optimization"])
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
 app.include_router(websocket.router, prefix="/ws", tags=["websocket"])
+
+# Also include routers for each client path
+client_paths = ['/acme', '/beta', '/gamma', '/demo', '/test']
+for client_path in client_paths:
+    app.include_router(health.router, prefix=f"{client_path}/api/health", tags=["health"])
+    app.include_router(data.router, prefix=f"{client_path}/api/data", tags=["data"])
+    app.include_router(model.router, prefix=f"{client_path}/api/model", tags=["model"])
+    app.include_router(optimization.router, prefix=f"{client_path}/api/optimization", tags=["optimization"])
+    app.include_router(admin.router, prefix=f"{client_path}/api/admin", tags=["admin"])
+    app.include_router(websocket.router, prefix=f"{client_path}/ws", tags=["websocket"])
 
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")

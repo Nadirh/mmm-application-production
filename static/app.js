@@ -1,9 +1,25 @@
-// MMM Frontend Application v1.9.135 with fold parameter fixes
-console.log('🚀 MMM App v1.9.135 Loading - Fold Parameter Fixes Applied');
+// MMM Frontend Application v1.9.148 with client path routing
+console.log('🚀 MMM App v1.9.148 Loading - Client Path Routing Applied');
 
 class MMMApp {
     constructor() {
-        this.apiUrl = 'http://mmm-alb-production-190214907.us-east-2.elb.amazonaws.com/api';
+        // Detect client path from URL
+        const path = window.location.pathname;
+        const clientPrefixes = ['/acme/', '/beta/', '/gamma/', '/demo/', '/test/'];
+        let basePath = '';
+
+        for (const prefix of clientPrefixes) {
+            if (path.startsWith(prefix)) {
+                basePath = prefix.slice(0, -1);  // Remove trailing slash
+                console.log(`Client path detected: ${basePath}`);
+                break;
+            }
+        }
+
+        // Set API URL with client path if present
+        this.apiUrl = basePath + '/api';
+        console.log(`API URL set to: ${this.apiUrl}`);
+
         this.uploadId = null;
         this.runId = null;
         this.progressInterval = null;
