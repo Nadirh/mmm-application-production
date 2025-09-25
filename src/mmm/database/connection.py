@@ -12,10 +12,17 @@ from mmm.config.settings import settings
 
 logger = structlog.get_logger()
 
+# Import models to ensure they're registered with Base.metadata
+# This import must happen AFTER Base is defined but BEFORE create_all
+
 
 class Base(DeclarativeBase):
     """Base class for all database models."""
     pass
+
+
+# Import all models here so they register with Base.metadata
+from mmm.database import models  # noqa: E402
 
 
 class DatabaseManager:
@@ -34,13 +41,13 @@ class DatabaseManager:
     async def _setup_database(self):
         """Setup database async engine."""
         database_url = settings.database.url
-        
+
         # Convert database URLs for async support
         if database_url.startswith("sqlite://"):
             database_url = database_url.replace("sqlite://", "sqlite+aiosqlite://")
         elif database_url.startswith("postgresql://"):
             database_url = database_url.replace("postgresql://", "postgresql+asyncpg://")
-        
+
         self.engine = create_async_engine(
             database_url,
             echo=settings.database.echo,
@@ -58,13 +65,18 @@ class DatabaseManager:
                 }
             } if "postgresql" in database_url else {}
         )
-        
+
         self.async_session_maker = async_sessionmaker(
             self.engine,
             class_=AsyncSession,
             expire_on_commit=False
         )
-        
+
+        # Create database tables if they don't exist
+        async with self.engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+            logger.info("Database tables created/verified")
+
         logger.info("Database initialized", url=database_url)
         
     async def _setup_redis(self):

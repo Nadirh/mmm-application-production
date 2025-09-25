@@ -1,5 +1,5 @@
-// MMM Frontend Application v1.9.112 with critical error fixes
-console.log('🚀 MMM App v1.9.112 Loading - CRITICAL ERROR FIXES');
+// MMM Frontend Application v1.9.135 with fold parameter fixes
+console.log('🚀 MMM App v1.9.135 Loading - Fold Parameter Fixes Applied');
 
 class MMMApp {
     constructor() {
