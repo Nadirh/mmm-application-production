@@ -1,7 +1,7 @@
 """
 Data upload and validation endpoints.
 """
-from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks, Depends
+from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks, Depends, Request
 from fastapi.responses import JSONResponse
 from typing import Dict, Any, List
 import pandas as pd
@@ -17,6 +17,7 @@ from mmm.config.settings import settings
 from mmm.database.connection import get_db
 from mmm.database.models import UploadSession
 from mmm.utils.storage import storage_manager
+from mmm.utils.encryption import file_encryption
 
 router = APIRouter()
 logger = structlog.get_logger()
@@ -48,7 +49,17 @@ async def get_upload_session_from_db(upload_id: str, db: AsyncSession, include_p
         
         if include_processed_data:
             # Load the CSV data and recreate processed_df
-            processed_df = pd.read_csv(db_session.file_path)
+            # Check if file is encrypted
+            if db_session.file_path.endswith('.enc') and not settings.is_development():
+                # Decrypt to temp file for processing
+                temp_csv = file_encryption.decrypt_to_temp_file(db_session.file_path, db_session.client_id or "default")
+                processed_df = pd.read_csv(temp_csv)
+                # Clean up temp file
+                import os as temp_os
+                temp_os.remove(temp_csv)
+            else:
+                processed_df = pd.read_csv(db_session.file_path)
+
             processor = DataProcessor()
             processed_df, channel_info_obj = processor.process_data(processed_df)
             
@@ -132,8 +143,10 @@ async def upload_data(file: UploadFile = File(...), db: AsyncSession = Depends(g
             )
         
         # Save file to client-specific directory (Chunk 2)
-        # For now, using "default" client - will be replaced with actual client_id later
+        # For now, using "default" client - headers will be added in fixed Chunk 4
         client_id = "default"
+        organization_id = "default"
+
         filename = f"{upload_id}.csv"
         upload_path = storage_manager.get_client_file_path(client_id, filename)
 
@@ -141,9 +154,23 @@ async def upload_data(file: UploadFile = File(...), db: AsyncSession = Depends(g
             f.write(content)
 
         logger.info(f"File saved to client directory: {upload_path}")
-        
-        # Parse CSV
-        df = pd.read_csv(upload_path)
+
+        # Encrypt the file (Chunk 3 - Server-side encryption)
+        # Only encrypt if not in development mode for easier testing
+        if not settings.is_development():
+            encrypted_path = file_encryption.encrypt_file(str(upload_path), client_id)
+            upload_path = encrypted_path
+            logger.info(f"File encrypted: {encrypted_path}")
+
+            # For parsing, decrypt to temp file
+            temp_csv = file_encryption.decrypt_to_temp_file(str(upload_path), client_id)
+            df = pd.read_csv(temp_csv)
+            # Clean up temp file
+            import os as temp_os
+            temp_os.remove(temp_csv)
+        else:
+            # Parse CSV directly in development
+            df = pd.read_csv(upload_path)
         
         # Validate data
         validator = DataValidator()
@@ -174,11 +201,11 @@ async def upload_data(file: UploadFile = File(...), db: AsyncSession = Depends(g
             "status": "validated"
         }
         
-        # Save to database with default client_id for now (Chunk 1)
+        # Save to database with client context (Chunk 1 & 4)
         db_upload_session = UploadSession(
             id=upload_id,
-            client_id=client_id,  # Using client_id variable from above
-            organization_id="default",  # Default organization for backward compatibility
+            client_id=client_id,  # Using client_id from headers
+            organization_id=organization_id,  # Using organization_id from headers
             filename=file.filename,
             file_path=str(upload_path),  # Convert Path to string for database
             total_days=data_summary.total_days,

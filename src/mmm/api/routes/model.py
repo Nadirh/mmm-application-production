@@ -1,7 +1,7 @@
 """
 Model training and results endpoints.
 """
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Dict, Any, Optional
 import uuid
